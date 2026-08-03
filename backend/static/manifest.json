@@ -1,0 +1,23 @@
+{
+  "name": "راسته - بازار محلی",
+  "short_name": "راسته",
+  "description": "پلتفرم یکپارچه خرید و فروش محلی",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#16a34a",
+  "background_color": "#f0fdf4",
+  "icons": [
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
