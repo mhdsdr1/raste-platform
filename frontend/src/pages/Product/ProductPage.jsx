@@ -1,9 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Star, Truck, Handshake, Store, ArrowRight, ShoppingCart, ShieldCheck, RotateCcw, Bell, BellRing } from 'lucide-react';
+import { Star, Truck, Handshake, Store, ArrowRight, ShoppingCart, ShieldCheck, Bell, BellRing } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
+
+const COLORS = [
+  { name: 'قرمز', hex: '#dc2626' }, { name: 'آبی', hex: '#2563eb' }, { name: 'سبز', hex: '#16a34a' },
+  { name: 'زرد', hex: '#eab308' }, { name: 'نارنجی', hex: '#f97316' }, { name: 'بنفش', hex: '#9333ea' },
+  { name: 'صورتی', hex: '#ec4899' }, { name: 'سرخابی', hex: '#db2777' }, { name: 'مشکی', hex: '#1f2937' },
+  { name: 'سفید', hex: '#f9fafb' }, { name: 'کرم', hex: '#fef3c7' }, { name: 'قهوه‌ای', hex: '#92400e' },
+  { name: 'خاکستری', hex: '#6b7280' }, { name: 'نیلی', hex: '#312e81' }, { name: 'فیروزه‌ای', hex: '#0891b2' },
+];
 
 export default function ProductPage() {
   const { id } = useParams();
@@ -17,10 +25,10 @@ export default function ProductPage() {
   }, [id]);
 
   const handleNotify = async () => {
-    if (!notifyPhone || notifyPhone.length !== 11) { toast.error('شماره تلفن معتبر وارد کن'); return; }
+    if (!notifyPhone || notifyPhone.length !== 11) { toast.error('شماره معتبر وارد کن'); return; }
     try {
       await api.post(`/shops/products/${id}/notify/`, { phone: notifyPhone });
-      toast.success('بهت خبر میدیم! 📩');
+      toast.success('بهت خبر میدیم!');
       setShowNotify(false);
     } catch { toast.error('خطا'); }
   };
@@ -29,6 +37,7 @@ export default function ProductPage() {
   if (!product) return <div className="min-h-screen flex items-center justify-center"><p>محصول یافت نشد</p></div>;
 
   const isOutOfStock = product.stock === 0;
+  const colorHex = COLORS.find(c => c.name === product.color)?.hex;
 
   return (
     <div className="min-h-screen bg-[#fdf2f8]">
@@ -50,13 +59,25 @@ export default function ProductPage() {
               <div>
                 <h1 className="text-xl md:text-2xl font-extrabold text-gray-900 mb-3">{product.title}</h1>
                 
-                {/* لینک فروشگاه - قابل کلیک */}
-                <Link to={`/shop/${product.shop?.slug || product.shop}`} className="flex items-center gap-2 text-sm text-pink-600 hover:text-pink-700 mb-4 hover:underline">
+                <Link to={`/shop/${product.shop?.slug || product.shop}`} className="flex items-center gap-2 text-sm text-pink-600 hover:text-pink-700 mb-4">
                   <Store size={16} /> {product.shop_name || 'فروشگاه'}
                   {product.shop_rating > 0 && <span className="flex items-center gap-0.5 text-yellow-600"><Star size={14} fill="currentColor" /> {product.shop_rating}</span>}
                 </Link>
 
                 <p className="text-sm text-gray-600 mb-4">{product.description}</p>
+                
+                {/* رنگ محصول */}
+                {product.color && (
+                  colorHex ? (
+                    <div className="flex items-center gap-2 mb-3">
+                      <div style={{ width: "20px", height: "20px", borderRadius: "50%", backgroundColor: colorHex, border: "2px solid #e5e7eb" }} />
+                    </div>
+                  ) : (
+                    <div className="mb-3">
+                      <span className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">🎨 {product.color}</span>
+                    </div>
+                  )
+                )}
                 
                 {isOutOfStock && (
                   <div className="bg-red-50 rounded-2xl p-4 mb-4 border border-red-200">

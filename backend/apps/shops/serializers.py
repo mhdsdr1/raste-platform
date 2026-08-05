@@ -12,6 +12,7 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'shop', 'shop_name', 'title', 'description', 'price', 'stock',
             'image', 'condition', 'health_status', 'health_description',
+        'color',
             'allow_local_test', 'allow_courier', 'story',
             'buy_link_active', 'is_visible', 'is_stock',
             'created_at', 'updated_at',
@@ -26,6 +27,7 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         fields = [
             'title', 'description', 'price', 'stock', 'image',
             'condition', 'health_status', 'health_description',
+        'color',
             'allow_local_test', 'allow_courier', 'story',
         ]
 

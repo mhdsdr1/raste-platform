@@ -112,6 +112,7 @@ class Product(models.Model):
     allow_courier = models.BooleanField(default=False, verbose_name='امکان ارسال با پیک')
     
     # داستان محصول (برای جذب مهندس ایرجی)
+    color = models.CharField(max_length=50, null=True, blank=True, default="", verbose_name="رنگ")
     story = models.TextField(null=True, blank=True, verbose_name='داستان محصول')
     
     # وضعیت نمایش

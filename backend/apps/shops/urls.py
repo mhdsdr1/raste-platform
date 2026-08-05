@@ -34,3 +34,7 @@ urlpatterns += [
 urlpatterns += [
     path('products/<int:product_id>/notify/', views.notify_me, name='notify-me'),
 ]
+
+urlpatterns += [
+    path('<int:shop_id>/products/all/', views.list_all_products, name='list-all-products'),
+]

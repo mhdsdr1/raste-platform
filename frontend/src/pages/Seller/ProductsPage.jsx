@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Eye, EyeOff, Package, Truck, Handshake, LayoutGrid, List, Camera, X, AlertTriangle, Tag } from 'lucide-react';
+import { Plus, Eye, EyeOff, Package, Truck, Handshake, LayoutGrid, List, Camera, X, AlertTriangle, Tag, Palette } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
 
@@ -14,6 +14,14 @@ const DEFAULT_CATEGORIES = [
   'انتخاب دسته‌بندی...', '📱 موبایل و تبلت', '💻 لپتاپ و کامپیوتر', '👗 پوشاک',
   '👟 کفش و کیف', '🍔 خوراکی', '🏠 لوازم خانگی', '📚 کتاب و لوازم التحریر',
   '💄 آرایشی و بهداشتی', '🧸 اسباب بازی', '⚽ ورزشی', '🚗 خودرو', '🏪 سایر', '✏️ دسته‌بندی جدید...',
+];
+
+const COLORS = [
+  { name: 'قرمز', hex: '#dc2626' }, { name: 'آبی', hex: '#2563eb' }, { name: 'سبز', hex: '#16a34a' },
+  { name: 'زرد', hex: '#eab308' }, { name: 'نارنجی', hex: '#f97316' }, { name: 'بنفش', hex: '#9333ea' },
+  { name: 'صورتی', hex: '#ec4899' }, { name: 'سرخابی', hex: '#db2777' }, { name: 'مشکی', hex: '#1f2937' },
+  { name: 'سفید', hex: '#f9fafb' }, { name: 'کرم', hex: '#fef3c7' }, { name: 'قهوه‌ای', hex: '#92400e' },
+  { name: 'خاکستری', hex: '#6b7280' }, { name: 'نیلی', hex: '#312e81' }, { name: 'فیروزه‌ای', hex: '#0891b2' },
 ];
 
 export default function SellerProductsPage() {
@@ -38,6 +46,9 @@ export default function SellerProductsPage() {
   const [lowStockAlert, setLowStockAlert] = useState('');
   const [category, setCategory] = useState(DEFAULT_CATEGORIES[0]);
   const [customCategory, setCustomCategory] = useState('');
+  const [colorInput, setColorInput] = useState('');
+  const [selectedColor, setSelectedColor] = useState(null);
+  const [showColorSuggestions, setShowColorSuggestions] = useState(false);
 
   const fetchProducts = async () => {
     try {
@@ -47,6 +58,9 @@ export default function SellerProductsPage() {
   };
 
   useEffect(() => { fetchProducts(); }, [shopId]);
+
+  const filteredColors = colorInput.length >= 1 ? COLORS.filter(c => c.name.includes(colorInput)) : [];
+  const handleColorSelect = (color) => { setSelectedColor(color); setColorInput(color.name); setShowColorSuggestions(false); };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -59,10 +73,29 @@ export default function SellerProductsPage() {
       fd.append('allow_courier', allowCourier); fd.append('allow_local_test', allowTest);
       fd.append('story', story.trim());
       fd.append('category', customCategory || (category === DEFAULT_CATEGORIES[0] ? '' : category));
+      fd.append('color', selectedColor ? selectedColor.name : '');
       if (image) fd.append('image', image);
       await api.post(`/shops/${shopId}/products/`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       toast.success('محصول اضافه شد'); setShowCreate(false); resetForm(); fetchProducts();
     } catch (err) { toast.error('خطا در ایجاد محصول'); } finally { setCreating(false); }
+  };
+
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [editColor, setEditColor] = useState("");
+
+  const openEditModal = (product) => {
+    setEditingProduct(product);
+    setEditColor(product.color || "");
+  };
+
+  const saveEdit = async () => {
+    if (!editingProduct) return;
+    try {
+      await api.patch(`/shops/products/${editingProduct.id}/update/`, { color: editColor });
+      toast.success("محصول ویرایش شد");
+      setEditingProduct(null);
+      fetchProducts();
+    } catch (err) { toast.error("خطا در ویرایش"); }
   };
 
   const toggleVisibility = async (product) => {
@@ -75,6 +108,7 @@ export default function SellerProductsPage() {
     setCondition('new'); setAllowCourier(true); setAllowTest(false);
     setStory(''); setImage(null); setImagePreview(null);
     setLowStockAlert(''); setCategory(DEFAULT_CATEGORIES[0]); setCustomCategory('');
+    setColorInput(''); setSelectedColor(null);
   };
 
   const sortedProducts = [...products].sort((a, b) => {
@@ -124,7 +158,29 @@ export default function SellerProductsPage() {
                     <label className="text-sm text-gray-600">موجودی</label>
                     <input type="number" value={stock} onChange={e => setStock(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1" />
                   </div>
-                  <div className="md:col-span-2">
+                  
+                  {/* رنگ‌بندی */}
+                  <div className="relative">
+                    <label className="text-sm text-gray-600 flex items-center gap-1"><Palette size={14} /> رنگ‌بندی</label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <input value={colorInput} onChange={e => { setColorInput(e.target.value); setShowColorSuggestions(true); if (!e.target.value) setSelectedColor(null); }}
+                        onFocus={() => setShowColorSuggestions(true)} onBlur={() => setTimeout(() => setShowColorSuggestions(false), 200)}
+                        placeholder="مثلاً: قرمز" className="flex-1 px-4 py-2.5 border rounded-xl text-sm" />
+                      {selectedColor && <div className="w-8 h-8 rounded-full border-2 border-gray-300 flex-shrink-0" style={{ backgroundColor: selectedColor.hex }} />}
+                    </div>
+                    {showColorSuggestions && colorInput.length >= 1 && filteredColors.length > 0 && (
+                      <div className="absolute top-full mt-1 w-full bg-white rounded-xl shadow-lg border z-50 max-h-40 overflow-y-auto">
+                        {filteredColors.map(color => (
+                          <button key={color.name} type="button" onMouseDown={() => handleColorSelect(color)}
+                            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-pink-50 text-sm">
+                            <div className="w-6 h-6 rounded-full border" style={{ backgroundColor: color.hex }} /><span>{color.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
                     <label className="text-sm text-gray-600">دسته‌بندی</label>
                     <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1">
                       {DEFAULT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -156,7 +212,7 @@ export default function SellerProductsPage() {
                   </div>
                   <div className="md:col-span-2">
                     <label className="text-sm text-gray-600">توضیحات</label>
-                    <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1 resize-none" />
+                    <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1 resize-none" placeholder="اختیاری" />
                   </div>
                 </div>
                 <div className="flex gap-2 mt-4">
@@ -180,12 +236,18 @@ export default function SellerProductsPage() {
             {sortedProducts.map(product => {
               const isLowStock = lowStockAlert && product.stock > 0 && product.stock <= Number(lowStockAlert);
               const isOutOfStock = product.stock === 0;
+              const colorHex = COLORS.find(c => c.name === product.color)?.hex;
               return (
                 <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                   className={`bg-white rounded-2xl p-4 border flex items-center gap-4 ${isLowStock ? 'border-orange-400 animate-pulse' : isOutOfStock ? 'border-red-300 bg-red-50/50' : 'border-gray-100'}`}>
-                  <div className="w-12 h-12 bg-pink-50 rounded-xl flex items-center justify-center text-xl">{product.image ? <img src={product.image} className="w-full h-full object-cover rounded-xl" /> : '🛍️'}</div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-sm">{product.title}</h3>
+                  <div className="w-12 h-12 bg-pink-50 rounded-xl flex items-center justify-center text-xl flex-shrink-0">
+                    {product.image ? <img src={product.image} className="w-full h-full object-cover rounded-xl" /> : '🛍️'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-sm truncate">{product.title}</h3>
+                      {colorHex && <div className="w-5 h-5 rounded-full border border-gray-300 flex-shrink-0" style={{ backgroundColor: colorHex }} title={product.color} />}
+                    </div>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-sm font-extrabold text-pink-600">{Number(product.price).toLocaleString('fa-IR')} تومان</span>
                       <span className="text-xs text-gray-400">| موجودی: {product.stock}</span>
@@ -193,6 +255,9 @@ export default function SellerProductsPage() {
                     {isLowStock && <p className="text-xs text-orange-600 mt-1">⚠️ فقط {product.stock} عدد دیگر موجود است</p>}
                     {isOutOfStock && <p className="text-xs text-red-600 mt-1">❌ اتمام موجودی</p>}
                   </div>
+                  <Link to={`/seller/products/${product.id}/edit`} className="w-9 h-9 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-xl flex items-center justify-center transition-all" title="ویرایش محصول">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </Link>
                   <button onClick={() => toggleVisibility(product)}
                     className={`w-9 h-9 rounded-xl flex items-center justify-center ${product.is_visible ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
                     {product.is_visible ? <Eye size={16} /> : <EyeOff size={16} />}
@@ -202,6 +267,22 @@ export default function SellerProductsPage() {
             })}
           </div>
         )}
+      {/* Edit Modal */}
+      <AnimatePresence>
+        {editingProduct && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditingProduct(null)}>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+              <h3 className="font-bold text-lg mb-4">ویرایش {editingProduct.title}</h3>
+              <label className="text-sm text-gray-600">رنگ</label>
+              <input value={editColor} onChange={e => setEditColor(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1 mb-4" />
+              <div className="flex gap-2">
+                <button onClick={saveEdit} className="flex-1 bg-pink-600 text-white py-2.5 rounded-xl font-bold text-sm">ذخیره</button>
+                <button onClick={() => setEditingProduct(null)} className="flex-1 bg-gray-100 text-gray-600 py-2.5 rounded-xl font-bold text-sm">انصراف</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       </main>
     </div>
   );

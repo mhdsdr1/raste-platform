@@ -146,6 +146,7 @@ def update_product(request, product_id):
     
     # فقط فیلدهایی که توی request هستن رو آپدیت کن
     allowed_fields = ['title', 'description', 'price', 'stock', 'condition', 
+                      'color',
                       'health_status', 'health_description', 'allow_local_test', 
                       'allow_courier', 'story', 'is_visible', 'buy_link_active']
     
@@ -185,3 +186,15 @@ def notify_me(request, product_id):
     # TODO: ذخیره توی دیتابیس notify_me
     # فعلاً فقط پیام موفقیت
     return Response({'message': f'در صورت موجود شدن {product.title} به شما اطلاع داده میشه'})
+
+@extend_schema(description='لیست همه محصولات فروشگاه (حتی مخفی‌ها)')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_all_products(request, shop_id):
+    try:
+        shop = Shop.objects.get(id=shop_id, owner=request.user)
+    except Shop.DoesNotExist:
+        return Response({'error': 'فروشگاه یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    
+    products = shop.products.all()
+    return Response(ProductSerializer(products, many=True).data)
