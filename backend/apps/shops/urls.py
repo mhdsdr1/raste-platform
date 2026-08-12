@@ -38,3 +38,7 @@ urlpatterns += [
 urlpatterns += [
     path('<int:shop_id>/products/all/', views.list_all_products, name='list-all-products'),
 ]
+
+urlpatterns += [
+    path('<int:shop_id>/update/', views.update_shop, name='update-shop'),
+]

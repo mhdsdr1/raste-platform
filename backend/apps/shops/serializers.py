@@ -3,7 +3,6 @@ from .models import Shop, Product
 
 
 class ProductSerializer(serializers.ModelSerializer):
-    """سریالایزر محصول"""
     shop_name = serializers.CharField(source='shop.name', read_only=True)
     is_stock = serializers.BooleanField(read_only=True)
     
@@ -12,8 +11,7 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'shop', 'shop_name', 'title', 'description', 'price', 'stock',
             'image', 'condition', 'health_status', 'health_description',
-        'color',
-            'allow_local_test', 'allow_courier', 'story',
+            'allow_local_test', 'allow_courier', 'story', 'category', 'color',
             'buy_link_active', 'is_visible', 'is_stock',
             'created_at', 'updated_at',
         ]
@@ -21,19 +19,16 @@ class ProductSerializer(serializers.ModelSerializer):
 
 
 class ProductCreateSerializer(serializers.ModelSerializer):
-    """سریالایزر ایجاد محصول"""
     class Meta:
         model = Product
         fields = [
             'title', 'description', 'price', 'stock', 'image',
             'condition', 'health_status', 'health_description',
-        'color',
-            'allow_local_test', 'allow_courier', 'story',
+            'allow_local_test', 'allow_courier', 'story', 'category', 'color',
         ]
 
 
 class ShopSerializer(serializers.ModelSerializer):
-    """سریالایزر فروشگاه"""
     products_count = serializers.IntegerField(read_only=True)
     active_products_count = serializers.IntegerField(read_only=True)
     owner_name = serializers.CharField(source='owner.get_full_name', read_only=True)
@@ -51,7 +46,6 @@ class ShopSerializer(serializers.ModelSerializer):
 
 
 class ShopCreateSerializer(serializers.ModelSerializer):
-    """سریالایزر ایجاد فروشگاه"""
     class Meta:
         model = Shop
         fields = ['name', 'slug', 'description', 'shop_type', 'contact_phone', 'address']

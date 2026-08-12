@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Eye, EyeOff, Package, Truck, Handshake, LayoutGrid, List, Camera, X, AlertTriangle, Tag, Palette } from 'lucide-react';
+import { Plus, Eye, EyeOff, Package, Truck, Handshake, LayoutGrid, List, Camera, X, AlertTriangle, Tag, Palette, Edit3 } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
 
@@ -43,12 +43,22 @@ export default function SellerProductsPage() {
   const [story, setStory] = useState('');
   const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
-  const [lowStockAlert, setLowStockAlert] = useState('');
   const [category, setCategory] = useState(DEFAULT_CATEGORIES[0]);
   const [customCategory, setCustomCategory] = useState('');
   const [colorInput, setColorInput] = useState('');
   const [selectedColor, setSelectedColor] = useState(null);
   const [showColorSuggestions, setShowColorSuggestions] = useState(false);
+
+  // lowStockAlert با localStorage
+  const [lowStockAlert, setLowStockAlert] = useState(() => {
+    return localStorage.getItem('lowStockAlert') || '3';
+  });
+
+  // ذخیره در localStorage موقع تغییر
+  const handleLowStockChange = (value) => {
+    setLowStockAlert(value);
+    localStorage.setItem('lowStockAlert', value);
+  };
 
   const fetchProducts = async () => {
     try {
@@ -80,24 +90,6 @@ export default function SellerProductsPage() {
     } catch (err) { toast.error('خطا در ایجاد محصول'); } finally { setCreating(false); }
   };
 
-  const [editingProduct, setEditingProduct] = useState(null);
-  const [editColor, setEditColor] = useState("");
-
-  const openEditModal = (product) => {
-    setEditingProduct(product);
-    setEditColor(product.color || "");
-  };
-
-  const saveEdit = async () => {
-    if (!editingProduct) return;
-    try {
-      await api.patch(`/shops/products/${editingProduct.id}/update/`, { color: editColor });
-      toast.success("محصول ویرایش شد");
-      setEditingProduct(null);
-      fetchProducts();
-    } catch (err) { toast.error("خطا در ویرایش"); }
-  };
-
   const toggleVisibility = async (product) => {
     setProducts(prev => prev.map(p => p.id === product.id ? { ...p, is_visible: !p.is_visible } : p));
     try { await api.patch(`/shops/products/${product.id}/update/`, { is_visible: !product.is_visible }); } catch (err) {}
@@ -107,7 +99,7 @@ export default function SellerProductsPage() {
     setTitle(''); setDescription(''); setPrice(''); setStock('1');
     setCondition('new'); setAllowCourier(true); setAllowTest(false);
     setStory(''); setImage(null); setImagePreview(null);
-    setLowStockAlert(''); setCategory(DEFAULT_CATEGORIES[0]); setCustomCategory('');
+    setCategory(DEFAULT_CATEGORIES[0]); setCustomCategory('');
     setColorInput(''); setSelectedColor(null);
   };
 
@@ -158,8 +150,6 @@ export default function SellerProductsPage() {
                     <label className="text-sm text-gray-600">موجودی</label>
                     <input type="number" value={stock} onChange={e => setStock(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1" />
                   </div>
-                  
-                  {/* رنگ‌بندی */}
                   <div className="relative">
                     <label className="text-sm text-gray-600 flex items-center gap-1"><Palette size={14} /> رنگ‌بندی</label>
                     <div className="flex items-center gap-2 mt-1">
@@ -179,7 +169,6 @@ export default function SellerProductsPage() {
                       </div>
                     )}
                   </div>
-
                   <div>
                     <label className="text-sm text-gray-600">دسته‌بندی</label>
                     <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1">
@@ -197,7 +186,7 @@ export default function SellerProductsPage() {
                   </div>
                   <div>
                     <label className="text-sm text-gray-600 flex items-center gap-1"><AlertTriangle size={14} className="text-orange-500" /> هشدار موجودی</label>
-                    <input type="number" value={lowStockAlert} onChange={e => setLowStockAlert(e.target.value)} placeholder="مثلاً ۵" className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1" />
+                    <input type="number" value={lowStockAlert} onChange={e => handleLowStockChange(e.target.value)} placeholder="۳" className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1" />
                   </div>
                   <div>
                     <label className="text-sm text-gray-600 mb-2">امکانات</label>
@@ -255,8 +244,8 @@ export default function SellerProductsPage() {
                     {isLowStock && <p className="text-xs text-orange-600 mt-1">⚠️ فقط {product.stock} عدد دیگر موجود است</p>}
                     {isOutOfStock && <p className="text-xs text-red-600 mt-1">❌ اتمام موجودی</p>}
                   </div>
-                  <Link to={`/seller/products/${product.id}/edit`} className="w-9 h-9 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-xl flex items-center justify-center transition-all" title="ویرایش محصول">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  <Link to={`/seller/products/${product.id}/edit`} className="w-9 h-9 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center transition-all" title="ویرایش محصول">
+                    <Edit3 size={16} />
                   </Link>
                   <button onClick={() => toggleVisibility(product)}
                     className={`w-9 h-9 rounded-xl flex items-center justify-center ${product.is_visible ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
@@ -267,22 +256,6 @@ export default function SellerProductsPage() {
             })}
           </div>
         )}
-      {/* Edit Modal */}
-      <AnimatePresence>
-        {editingProduct && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditingProduct(null)}>
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-              <h3 className="font-bold text-lg mb-4">ویرایش {editingProduct.title}</h3>
-              <label className="text-sm text-gray-600">رنگ</label>
-              <input value={editColor} onChange={e => setEditColor(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1 mb-4" />
-              <div className="flex gap-2">
-                <button onClick={saveEdit} className="flex-1 bg-pink-600 text-white py-2.5 rounded-xl font-bold text-sm">ذخیره</button>
-                <button onClick={() => setEditingProduct(null)} className="flex-1 bg-gray-100 text-gray-600 py-2.5 rounded-xl font-bold text-sm">انصراف</button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
       </main>
     </div>
   );

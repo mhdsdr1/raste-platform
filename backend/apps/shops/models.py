@@ -113,6 +113,7 @@ class Product(models.Model):
     
     # داستان محصول (برای جذب مهندس ایرجی)
     color = models.CharField(max_length=50, null=True, blank=True, default="", verbose_name="رنگ")
+    category = models.CharField(max_length=100, blank=True, default="", verbose_name="دسته‌بندی")
     story = models.TextField(null=True, blank=True, verbose_name='داستان محصول')
     
     # وضعیت نمایش
