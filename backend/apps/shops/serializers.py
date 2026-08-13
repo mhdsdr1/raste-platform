@@ -5,11 +5,16 @@ from .models import Shop, Product
 class ProductSerializer(serializers.ModelSerializer):
     shop_name = serializers.CharField(source='shop.name', read_only=True)
     is_stock = serializers.BooleanField(read_only=True)
+    owner_name = serializers.SerializerMethodField()
+    
+    def get_owner_name(self, obj):
+        owner = obj.shop.owner
+        return owner.get_full_name() or owner.phone
     
     class Meta:
         model = Product
         fields = [
-            'id', 'shop', 'shop_name', 'title', 'description', 'price', 'stock',
+            'id', 'shop', 'shop_name', 'owner_name', 'title', 'description', 'price', 'stock',
             'image', 'condition', 'health_status', 'health_description',
             'allow_local_test', 'allow_courier', 'story', 'category', 'color',
             'buy_link_active', 'is_visible', 'is_stock',

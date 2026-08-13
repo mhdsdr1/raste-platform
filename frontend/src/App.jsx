@@ -13,6 +13,7 @@ const SellerShopsPage = lazy(() => import('./pages/Seller/ShopsPage.jsx'));
 const SellerProductsPage = lazy(() => import('./pages/Seller/ProductsPage.jsx'));
 const EditProductPage = lazy(() => import('./pages/Seller/EditProductPage.jsx'));
 const EditShopPage = lazy(() => import('./pages/Seller/EditShopPage.jsx'));
+const ShopPage = lazy(() => import('./pages/Shop/ShopPage.jsx'));
 
 function LoadingSpinner() {
   return (
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/seller/shops/:id/edit" element={<EditShopPage />} />
         <Route path="/seller/shops/:id/products" element={<SellerProductsPage />} />
         <Route path="/seller/products/:id/edit" element={<EditProductPage />} />
+        <Route path="/shop/:slug" element={<ShopPage />} />
       </Routes>
     </Suspense>
   );
