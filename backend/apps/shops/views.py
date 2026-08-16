@@ -104,11 +104,20 @@ def update_product(request, product_id):
     except Product.DoesNotExist:
         return Response({'error': 'محصول یافت نشد یا دسترسی ندارید'}, status=status.HTTP_404_NOT_FOUND)
     allowed = ['title', 'description', 'price', 'stock', 'condition', 'category', 'color',
+                      'colors',
+                      'sizes',
                'health_status', 'health_description', 'allow_local_test', 'allow_courier',
                'story', 'is_visible', 'buy_link_active']
     for field in allowed:
         if field in request.data:
             setattr(product, field, request.data[field])
+    # اگه stock توی request هست، همون رو استفاده کن
+    if 'stock' in request.data and not product.colors and not product.sizes:
+        product.stock = request.data['stock']
+    elif product.colors and isinstance(product.colors, dict) and len(product.colors) > 0:
+        product.stock = sum(int(v) for v in product.colors.values() if isinstance(v, (int, float)) and v > 0)
+    elif product.sizes and isinstance(product.sizes, dict) and len(product.sizes) > 0:
+        product.stock = sum(int(v) for v in product.sizes.values() if isinstance(v, (int, float)) and v > 0)
     product.save()
     return Response(ProductSerializer(product).data)
 

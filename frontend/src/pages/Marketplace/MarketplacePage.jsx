@@ -49,14 +49,17 @@ function ProductCard({ product }) {
           <h3 className="font-bold text-gray-800 text-sm mb-1 line-clamp-1">{product.title}</h3>
           <p className="text-xs text-gray-500 truncate">{product.shop?.name || 'فروشگاه'}</p>
           {product.owner_name && <p className="text-xs text-gray-400">{product.owner_name}</p>}
-          <div className="flex items-center gap-2 mt-1 mb-2">
-            {product.shop_rating > 0 && <span className="text-xs text-yellow-600 flex items-center gap-0.5"><Star size={12} fill="currentColor" /> {product.shop_rating}</span>}
+          <div className="flex items-center gap-2 mt-1 mb-1">
+            {product.colors && Object.keys(product.colors).length > 0 ? (
+              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">🎨 رنگ‌بندی</span>
+            ) : product.color && (colorHex ? 
+              <div style={{ width: "14px", height: "14px", borderRadius: "50%", backgroundColor: colorHex, border: "1px solid #d1d5db", display: "inline-block" }} /> : 
+              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{product.color}</span>
+            )}
+            {product.stock === 0 ? <span className="text-xs text-red-500 font-bold">اتمام موجودی</span> : product.stock <= 3 ? <span className="text-xs text-red-500">موجودی فقط {product.stock} عدد</span> : <span className="text-xs text-gray-400">موجودی {product.stock} عدد</span>}
           </div>
-          {product.color && (colorHex ? <div className="flex items-center gap-1.5 mb-2"><div style={{ width: "16px", height: "16px", borderRadius: "50%", backgroundColor: colorHex, border: "1px solid #d1d5db", display: "inline-block" }} /></div> : <div className="mb-2"><span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{product.color}</span></div>)}
-          {product.category && <div className="mb-2"><span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">{product.category}</span></div>}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mt-2">
             <span className="text-base font-extrabold text-gray-900">{Number(product.price).toLocaleString('fa-IR')}<span className="text-xs text-gray-500 font-normal mr-1">تومان</span></span>
-            {product.sales_count > 0 && <span className="text-xs text-gray-400">{product.sales_count} فروش</span>}
           </div>
         </div>
       </Link>

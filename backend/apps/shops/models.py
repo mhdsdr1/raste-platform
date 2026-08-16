@@ -89,7 +89,7 @@ class Product(models.Model):
         verbose_name='فروشگاه'
     )
     title = models.CharField(max_length=200, verbose_name='عنوان')
-    description = models.TextField(verbose_name='توضیحات')
+    description = models.TextField(null=True, blank=True, default='', verbose_name='توضیحات')
     price = models.DecimalField(max_digits=12, decimal_places=0, verbose_name='قیمت (تومان)')
     stock = models.IntegerField(default=1, verbose_name='موجودی')
     
@@ -112,7 +112,9 @@ class Product(models.Model):
     allow_courier = models.BooleanField(default=False, verbose_name='امکان ارسال با پیک')
     
     # داستان محصول (برای جذب مهندس ایرجی)
+    colors = models.JSONField(default=dict, blank=True, verbose_name="رنگ‌بندی با موجودی")
     color = models.CharField(max_length=50, null=True, blank=True, default="", verbose_name="رنگ")
+    sizes = models.JSONField(default=dict, blank=True, verbose_name='سایزبندی')
     category = models.CharField(max_length=100, blank=True, default="", verbose_name="دسته‌بندی")
     story = models.TextField(null=True, blank=True, verbose_name='داستان محصول')
     
@@ -144,4 +146,11 @@ class Product(models.Model):
     @property
     def discount_percent(self):
         """درصد تخفیف (برای هم‌خرید) - بعداً تکمیل میشه"""
+        return None
+
+    @property
+    def total_colors_stock(self):
+        """جمع موجودی همه رنگ‌ها"""
+        if self.colors:
+            return sum(int(v) for v in self.colors.values() if isinstance(v, (int, float)) and v > 0)
         return None

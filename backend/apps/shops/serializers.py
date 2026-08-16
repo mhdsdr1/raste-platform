@@ -17,6 +17,10 @@ class ProductSerializer(serializers.ModelSerializer):
             'id', 'shop', 'shop_name', 'owner_name', 'title', 'description', 'price', 'stock',
             'image', 'condition', 'health_status', 'health_description',
             'allow_local_test', 'allow_courier', 'story', 'category', 'color',
+        'colors',
+        'sizes',
+        'colors',
+        'sizes',
             'buy_link_active', 'is_visible', 'is_stock',
             'created_at', 'updated_at',
         ]
@@ -30,6 +34,10 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             'title', 'description', 'price', 'stock', 'image',
             'condition', 'health_status', 'health_description',
             'allow_local_test', 'allow_courier', 'story', 'category', 'color',
+        'colors',
+        'sizes',
+        'colors',
+        'sizes',
         ]
 
 

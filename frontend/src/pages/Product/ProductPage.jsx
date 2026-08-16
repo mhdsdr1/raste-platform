@@ -65,11 +65,44 @@ export default function ProductPage() {
 
                 <p className="text-sm text-gray-600 mb-4">{product.description}</p>
                 
-                {product.color && (colorHex ? (
-                  <div className="flex items-center gap-2 mb-3"><div style={{ width: "20px", height: "20px", borderRadius: "50%", backgroundColor: colorHex, border: "2px solid #e5e7eb" }} /></div>
-                ) : (
-                  <div className="mb-3"><span className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">🎨 {product.color}</span></div>
-                ))}
+                {product.colors && Object.keys(product.colors).length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-sm font-bold text-gray-700 mb-2">🎨 رنگ‌بندی:</p>
+                    <div className="space-y-1.5">
+                      {Object.entries(product.colors).map(([colorName, colorStock]) => {
+                        const ch = COLORS.find(c => c.name === colorName)?.hex;
+                        if (colorStock === 0 || colorStock === '0' || colorStock === null) return null;
+                        return (
+                          <div key={colorName} className="flex items-center gap-2 text-sm">
+                            <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full">{colorName}</span>
+                            <span className={colorStock <= 3 ? "text-red-500" : "text-gray-500"}>
+                              {colorStock <= 3 ? `موجودی فقط ${colorStock} عدد` : `موجودی ${colorStock} عدد`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {product.sizes && Object.keys(product.sizes).length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-sm font-bold text-gray-700 mb-2">📐 سایز‌بندی:</p>
+                    <div className="space-y-1.5">
+                      {Object.entries(product.sizes).map(([sizeName, sizeStock]) => {
+                        if (sizeStock === 0 || sizeStock === '0' || sizeStock === null) return null;
+                        return (
+                          <div key={sizeName} className="flex items-center gap-2 text-sm">
+                            <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full font-bold">{sizeName}</span>
+                            <span className={sizeStock <= 3 ? "text-red-500" : "text-gray-500"}>
+                              {sizeStock <= 3 ? `موجودی فقط ${sizeStock} عدد` : `موجودی ${sizeStock} عدد`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 
                 {isOutOfStock && (
                   <div className="bg-red-50 rounded-2xl p-4 mb-4 border border-red-200">
