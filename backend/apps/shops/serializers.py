@@ -6,6 +6,18 @@ class ProductSerializer(serializers.ModelSerializer):
     shop_name = serializers.CharField(source='shop.name', read_only=True)
     is_stock = serializers.BooleanField(read_only=True)
     owner_name = serializers.SerializerMethodField()
+    image_url = serializers.SerializerMethodField()
+
+    def get_image_url(self, obj):
+        if obj.image:
+            return obj.image.url
+        return None
+    image_url = serializers.SerializerMethodField()
+
+    def get_image_url(self, obj):
+        if obj.image:
+            return obj.image.url
+        return None
     
     def get_owner_name(self, obj):
         owner = obj.shop.owner
@@ -15,7 +27,7 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'shop', 'shop_name', 'owner_name', 'title', 'description', 'price', 'stock',
-            'image', 'condition', 'health_status', 'health_description',
+            'image', 'image_url', 'condition', 'health_status', 'health_description',
             'allow_local_test', 'allow_courier', 'story', 'category', 'color',
         'colors',
         'sizes',

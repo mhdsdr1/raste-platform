@@ -78,6 +78,17 @@ def create_product(request, shop_id):
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     product = Product.objects.create(shop=shop, **serializer.validated_data)
+    
+    # عکس محصول از request.FILES
+    print('DEBUG FILES:', list(request.FILES.keys()))
+    print('DEBUG DATA keys:', list(request.data.keys()))
+    if 'image' in request.FILES:
+        product.image = request.FILES['image']
+        product.save()
+        print('DEBUG image saved:', product.image)
+    else:
+        print('DEBUG: image not in FILES')
+    
     return Response(ProductSerializer(product).data, status=status.HTTP_201_CREATED)
 
 
@@ -117,7 +128,15 @@ def update_product(request, product_id):
                'story', 'is_visible', 'buy_link_active']
     for field in allowed:
         if field in request.data:
-            setattr(product, field, request.data[field])
+            value = request.data[field]
+            if field in ['colors', 'sizes'] and isinstance(value, str):
+                import json
+                value = json.loads(value)
+            setattr(product, field, value)
+    
+    # عکس محصول از request.FILES
+    if 'image' in request.FILES:
+        product.image = request.FILES['image']
     # اگه stock توی request هست، همون رو استفاده کن
     if 'stock' in request.data and not product.colors and not product.sizes:
         product.stock = request.data['stock']
@@ -152,3 +171,15 @@ def notify_me(request, product_id):
     except Product.DoesNotExist:
         return Response({'error': 'محصول یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
     return Response({'message': f'در صورت موجود شدن {product.title} به شما اطلاع داده میشه'})
+
+
+@extend_schema(description='حذف محصول')
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_product(request, product_id):
+    try:
+        product = Product.objects.get(id=product_id, shop__owner=request.user)
+    except Product.DoesNotExist:
+        return Response({'error': 'محصول یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    product.delete()
+    return Response({'message': 'محصول حذف شد'})

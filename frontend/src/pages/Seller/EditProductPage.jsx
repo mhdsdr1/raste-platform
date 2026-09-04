@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Package, Save, Plus, X, AlertTriangle, Truck, Handshake } from 'lucide-react';
+import { Package, Save, Plus, X, AlertTriangle, Truck, Handshake, Camera } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
 import useProductsStore from '../../store/productsStore';
@@ -68,6 +68,8 @@ export default function EditProductPage() {
   const [sizesList, setSizesList] = useState([]);
   const [newSizeName, setNewSizeName] = useState('');
   const [newSizeStock, setNewSizeStock] = useState('');
+  const [image, setImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
 
   useEffect(() => {
     // ذخیره shopId برای بازگشت
@@ -80,6 +82,7 @@ export default function EditProductPage() {
         setTitle(p.title || '');
         setPrice(p.price || '');
         setStock(p.stock || '');
+        if (p.image) setImagePreview(p.image);
         setDescription(p.description || '');
         setCategory(p.category || CATEGORIES[0]);
         setCondition(p.condition || 'new');
@@ -175,6 +178,17 @@ export default function EditProductPage() {
         <div className="bg-white rounded-2xl p-6 border shadow-sm">
           <h2 className="font-bold text-xl text-gray-800 mb-6"><Package className="inline mr-2 text-pink-600" size={22} />ویرایش محصول</h2>
           <div className="space-y-4">
+            <div>
+              <label className="text-sm text-gray-600 mb-2 block">عکس محصول</label>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => document.getElementById('editProductImage').click()}
+                  className="w-20 h-20 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-300 flex items-center justify-center">
+                  {imagePreview ? <img src={imagePreview.replace('http://localhost:8000', '')} className="w-full h-full object-cover rounded-2xl" /> : <Camera size={24} className="text-gray-400" />}
+                </button>
+                {imagePreview && <button onClick={() => { setImage(null); setImagePreview(null); }} className="text-red-500"><X size={18} /></button>}
+                <input id="editProductImage" type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setImage(f); setImagePreview(URL.createObjectURL(f)); } }} />
+              </div>
+            </div>
             <div><label className="text-sm text-gray-600">عنوان <span className="text-red-500">*</span></label><input value={title} onChange={e => setTitle(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1" /></div>
             <div className="grid grid-cols-2 gap-4">
               <div><label className="text-sm text-gray-600">قیمت (تومان) <span className="text-red-500">*</span></label><input type="text" value={priceDisplay || formatPrice(price)} onChange={handlePriceChange} onBlur={handlePriceBlur} className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1" dir="ltr" /></div>

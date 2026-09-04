@@ -222,7 +222,7 @@ export default function ShopPage() {
                   className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all overflow-hidden group">
                   <Link to={`/product/${product.id}`}>
                     <div className="aspect-square bg-gradient-to-br from-pink-50 to-pink-100 flex items-center justify-center relative overflow-hidden">
-                      {product.image ? <img src={product.image} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> : <div className="text-5xl">🛍️</div>}
+                      {product.image_url ? <img src={product.image_url} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> : <div className="text-5xl">🛍️</div>}
                     </div>
                     <div className="p-4">
                       <h3 className="font-bold text-gray-800 text-sm mb-1 line-clamp-1">{product.title}</h3>
@@ -249,7 +249,7 @@ export default function ShopPage() {
             {filteredProducts.map(product => (
               <Link key={product.id} to={`/product/${product.id}`}
                 className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-all flex items-center gap-4">
-                <div className="w-12 h-12 bg-pink-50 rounded-xl flex items-center justify-center text-xl flex-shrink-0">🛍️</div>
+                <div className="w-12 h-12 bg-pink-50 rounded-xl flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">{product.image_url ? <img src={product.image_url} alt="" className="w-full h-full object-cover" /> : '🛍️'}</div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-bold text-sm text-gray-800 truncate">{product.title}</h3>
                   <div className="flex items-center gap-2 mt-1">

@@ -42,3 +42,7 @@ urlpatterns += [
 urlpatterns += [
     path('<int:shop_id>/update/', views.update_shop, name='update-shop'),
 ]
+
+urlpatterns += [
+    path('products/<int:product_id>/delete/', views.delete_product, name='delete-product'),
+]

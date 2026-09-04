@@ -165,15 +165,22 @@ const filteredColors = newColorName ? COLORS.filter(c => c.name.includes(newColo
 
     setCreating(true);
     try {
-      const payload = {
-        title: title.trim(), price, stock: stockNum || 1, condition,
-        description: description.trim(), allow_courier: allowCourier,
-        allow_local_test: allowTest, category: category === CATEGORIES[0] ? '' : category,
-      };
-      if (colorsList.length) { const o = {}; colorsList.forEach(c => o[c.name] = c.stock); payload.colors = o; }
-      if (sizesList.length) { const o = {}; sizesList.forEach(s => o[s.name] = s.stock); payload.sizes = o; }
+      const formData = new FormData();
+      formData.append('title', title.trim());
+      formData.append('price', price);
+      formData.append('stock', stockNum || 1);
+      formData.append('condition', condition);
+      formData.append('description', description.trim());
+      formData.append('allow_courier', allowCourier);
+      formData.append('allow_local_test', allowTest);
+      formData.append('category', category === CATEGORIES[0] ? '' : category);
+      if (colorsList.length) { const o = {}; colorsList.forEach(c => o[c.name] = c.stock); formData.append('colors', JSON.stringify(o)); }
+      if (sizesList.length) { const o = {}; sizesList.forEach(s => o[s.name] = s.stock); formData.append('sizes', JSON.stringify(o)); }
+      if (image) formData.append('image', image);
 
-      await api.post(`/shops/${shopId}/products/`, payload);
+      await api.post(`/shops/${shopId}/products/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
       toast.success('محصول اضافه شد');
       setShowCreate(false);
       resetForm();
@@ -186,6 +193,18 @@ const filteredColors = newColorName ? COLORS.filter(c => c.name.includes(newColo
     setCategory(CATEGORIES[0]); setCondition('new'); setAllowCourier(false); setAllowTest(false);
     setColorsList([]); setSizesList([]); setNewColorName(''); setNewColorStock('');
     setNewSizeName(''); setNewSizeStock('');
+    setImage(null); setImagePreview(null);
+  };
+
+  const handleDelete = async (product) => {
+    if (!window.confirm(`آیا از حذف «${product.title}» مطمئن هستید؟`)) return;
+    try {
+      await api.delete(`/shops/products/${product.id}/delete/`);
+      toast.success('محصول حذف شد');
+      fetchProducts();
+    } catch (err) {
+      toast.error('خطا در حذف محصول');
+    }
   };
 
   const toggleVisibility = async (product) => {
@@ -324,7 +343,7 @@ const filteredColors = newColorName ? COLORS.filter(c => c.name.includes(newColo
               return (
                 <div key={product.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${isLowStock ? 'border-orange-400' : isOutOfStock ? 'border-red-300' : 'border-gray-100'}`}>
                   <div className="aspect-square bg-pink-50 flex items-center justify-center text-3xl">
-                    {product.image ? <img src={product.image} alt="" className="w-full h-full object-cover" /> : '🛍️'}
+                    {product.image_url ? <img src={product.image_url} alt="" className="w-full h-full object-cover" /> : '🛍️'}
                   </div>
                   <div className="p-3">
                     <h3 className="font-bold text-sm truncate">{product.title}</h3>
@@ -333,7 +352,10 @@ const filteredColors = newColorName ? COLORS.filter(c => c.name.includes(newColo
                     {isLowStock && <p className="text-xs text-orange-600">⚠️ فقط {product.stock} عدد</p>}
                     {isOutOfStock && <p className="text-xs text-red-600">❌ اتمام</p>}
                     <div className="flex gap-1 mt-2">
-                      <Link to={`/seller/products/${product.id}/edit`} className="flex-1 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold text-center">✏️</Link>
+                      <div className="flex gap-1">
+  <Link to={`/seller/products/${product.id}/edit`} className="flex-1 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold text-center">✏️</Link>
+  <button onClick={() => handleDelete(product)} className="flex-1 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold text-center">🗑️</button>
+</div>
                       <button onClick={() => toggleVisibility(product)} className={`flex-1 py-1.5 rounded-lg text-xs ${product.is_visible ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
                         {product.is_visible ? '👁️' : '🙈'}
                       </button>
@@ -351,7 +373,7 @@ const filteredColors = newColorName ? COLORS.filter(c => c.name.includes(newColo
               return (
                 <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                   className={`bg-white rounded-2xl p-4 border flex items-center gap-4 ${isLowStock ? 'border-orange-400 animate-pulse' : isOutOfStock ? 'border-red-300 bg-red-50/50' : 'border-gray-100'}`}>
-                  <div className="w-12 h-12 bg-pink-50 rounded-xl flex items-center justify-center text-xl flex-shrink-0">🛍️</div>
+                  <div className="w-12 h-12 bg-pink-50 rounded-xl flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">{product.image_url ? <img src={product.image_url} alt="" className="w-full h-full object-cover" /> : '🛍️'}</div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-sm truncate">{product.title}</h3>
                     <div className="flex items-center gap-2 mt-1">
@@ -361,7 +383,10 @@ const filteredColors = newColorName ? COLORS.filter(c => c.name.includes(newColo
                     {isLowStock && <p className="text-xs text-orange-600 mt-1">⚠️ فقط {product.stock} عدد دیگر موجود است</p>}
                     {isOutOfStock && <p className="text-xs text-red-600 mt-1">❌ اتمام موجودی</p>}
                   </div>
-                  <Link to={`/seller/products/${product.id}/edit`} className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">✏️</Link>
+                  <div className="flex gap-1">
+  <Link to={`/seller/products/${product.id}/edit`} className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">✏️</Link>
+  <button onClick={() => handleDelete(product)} className="w-9 h-9 bg-red-50 text-red-600 rounded-xl flex items-center justify-center">🗑️</button>
+</div>
                   <button onClick={() => toggleVisibility(product)}
                     className={`w-9 h-9 rounded-xl flex items-center justify-center ${product.is_visible ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
                     {product.is_visible ? <Eye size={16} /> : <EyeOff size={16} />}
