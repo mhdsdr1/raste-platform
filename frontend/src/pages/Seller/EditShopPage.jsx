@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Store, Save, Phone, Eye, EyeOff, X, AlertCircle, Plus } from 'lucide-react';
+import { Store, Save, Phone, Eye, EyeOff, X, AlertCircle, Plus, Camera } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
 
@@ -16,6 +16,10 @@ export default function EditShopPage() {
   const [shopType, setShopType] = useState('social');
   const [address, setAddress] = useState('');
   const [phones, setPhones] = useState([{ number: '', show: true }]);
+  const [logo, setLogo] = useState(null);
+  const [logoPreview, setLogoPreview] = useState(null);
+  const [banner, setBanner] = useState(null);
+  const [bannerPreview, setBannerPreview] = useState(null);
 
   const shopTypes = [
     { value: 'social', label: '📱 فروشنده شبکه اجتماعی', desc: 'محصولات رو توی اینستاگرام، تلگرام و ایتا می‌فروشی' },
@@ -31,6 +35,8 @@ export default function EditShopPage() {
         setDescription(s.description || '');
         setShopType(s.shop_type || 'social');
         setAddress(s.address || '');
+        if (s.logo_url) setLogoPreview(s.logo_url);
+        if (s.banner_url) setBannerPreview(s.banner_url);
         // phones از API نمیاد، ولی می‌تونیم contact_phone رو بگیریم
         if (s.contact_phone) {
           setPhones([{ number: s.contact_phone, show: true }]);
@@ -61,21 +67,19 @@ export default function EditShopPage() {
   const handleSave = async () => {
     if (!name.trim()) { toast.error('نام فروشگاه الزامی است'); return; }
 
-    const validPhones = phones.filter(p => p.number.trim());
-    if (validPhones.length === 0) { toast.error('حداقل یک شماره الزامی است'); return; }
-
-    for (let phone of validPhones) {
-      if (!validatePhone(phone.number)) { toast.error('شماره باید ۱۱ رقمی و با ۰۹ شروع شود'); return; }
-    }
-
-    const numbers = validPhones.map(p => p.number.replace(/\D/g, ''));
-    if (new Set(numbers).size !== numbers.length) { toast.error('شماره‌های تکراری'); return; }
-
     setSaving(true);
     try {
-      await api.put(`/shops/${id}/update/`, {
-        name, description, shop_type: shopType, address,
-        contact_phone: validPhones[0]?.number?.replace(/\D/g, '') || '',
+      const formData = new FormData();
+      formData.append('name', name.trim());
+      formData.append('description', description.trim());
+      formData.append('shop_type', shopType);
+      formData.append('address', address);
+      formData.append('contact_phone', phones[0]?.number?.replace(/\D/g, '') || '');
+      if (logo) formData.append('logo', logo);
+      if (banner) formData.append('banner', banner);
+
+      await api.put(`/shops/${id}/update/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('فروشگاه ویرایش شد');
       navigate(-1);
@@ -102,6 +106,31 @@ export default function EditShopPage() {
           <h2 className="font-bold text-xl text-gray-800 mb-6 flex items-center gap-2"><Store className="text-pink-600" size={22} /> ویرایش فروشگاه</h2>
 
           <div className="space-y-5">
+            {/* آپلود عکس */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-bold text-gray-700">لوگو فروشگاه</label>
+                <div className="mt-2 flex items-center gap-3">
+                  <button type="button" onClick={() => document.getElementById('logoInput').click()}
+                    className="w-20 h-20 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-300 flex items-center justify-center">
+                    {logoPreview ? <img src={logoPreview} className="w-full h-full object-cover rounded-2xl" /> : <Camera size={24} className="text-gray-400" />}
+                  </button>
+                  {logoPreview && <button onClick={() => { setLogo(null); setLogoPreview(null); }} className="text-red-500"><X size={18} /></button>}
+                  <input id="logoInput" type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setLogo(f); setLogoPreview(URL.createObjectURL(f)); } }} />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-bold text-gray-700">بنر فروشگاه</label>
+                <div className="mt-2 flex items-center gap-3">
+                  <button type="button" onClick={() => document.getElementById('bannerInput').click()}
+                    className="w-full h-20 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-300 flex items-center justify-center">
+                    {bannerPreview ? <img src={bannerPreview} className="w-full h-full object-cover rounded-2xl" /> : <Camera size={24} className="text-gray-400" />}
+                  </button>
+                  {bannerPreview && <button onClick={() => { setBanner(null); setBannerPreview(null); }} className="text-red-500"><X size={18} /></button>}
+                  <input id="bannerInput" type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setBanner(f); setBannerPreview(URL.createObjectURL(f)); } }} />
+                </div>
+              </div>
+            </div>
             <div>
               <label className="text-sm font-bold text-gray-700">نام فروشگاه <span className="text-red-500">*</span></label>
               <input value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 border rounded-xl text-sm mt-1.5 focus:ring-2 focus:ring-pink-500" />

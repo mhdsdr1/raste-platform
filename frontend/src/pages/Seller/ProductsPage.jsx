@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Eye, EyeOff, Package, Truck, Handshake, LayoutGrid, List, X, AlertTriangle, Save } from 'lucide-react';
+import { Plus, Eye, EyeOff, Package, Truck, Handshake, LayoutGrid, List, X, AlertTriangle, Save, Camera } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
 import useProductsStore from '../../store/productsStore';
@@ -50,7 +50,10 @@ export default function SellerProductsPage() {
   const [showColorSuggestions, setShowColorSuggestions] = useState(false);
 
   const [sizesList, setSizesList] = useState([]);
+  const [shopInfo, setShopInfo] = useState(null);
   const [newSizeName, setNewSizeName] = useState('');
+  const [image, setImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [newSizeStock, setNewSizeStock] = useState('');
 
   const fetchProducts = async () => {
@@ -63,11 +66,8 @@ export default function SellerProductsPage() {
   const refreshKey = useProductsStore(s => s.refreshKey);
   useEffect(() => { fetchProducts(); }, [shopId, refreshKey]);
   useEffect(() => {
-    fetchProducts();
-  }, []);
-  useEffect(() => {
-    fetchProducts();
-  }, []); // هر بار که صفحه mount میشه، fetch کن
+    api.get(`/shops/${shopId}/`).then(res => setShopInfo(res.data)).catch(() => {});
+  }, [shopId]);
 
   const formatPrice = (val) => {
     const num = String(val).replace(/\D/g, '');
@@ -209,8 +209,13 @@ const filteredColors = newColorName ? COLORS.filter(c => c.name.includes(newColo
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6">
+        {shopInfo?.banner_url && (
+          <div className="rounded-2xl overflow-hidden mb-6 h-32 md:h-48">
+            <img src={shopInfo.banner_url} alt={shopInfo.name} className="w-full h-full object-cover" />
+          </div>
+        )}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-extrabold text-gray-800"><Package className="text-pink-600 inline mr-2" size={22} />محصولات فروشگاه</h1>
+          <h1 className="text-xl font-extrabold text-gray-800"><Package className="text-pink-600 inline mr-2" size={22} />{shopInfo?.name || 'فروشگاه'}</h1>
           <div className="flex items-center gap-2">
             <button onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')} className="w-9 h-9 bg-white border rounded-xl flex items-center justify-center">
               {viewMode === 'list' ? <LayoutGrid size={16} /> : <List size={16} />}
@@ -227,7 +232,18 @@ const filteredColors = newColorName ? COLORS.filter(c => c.name.includes(newColo
               <form onSubmit={handleCreate} className="bg-white rounded-2xl p-6 border shadow-sm">
                 <h2 className="font-bold text-gray-800 mb-4">افزودن محصول جدید</h2>
                 <div className="space-y-4">
-                  <div><label className="text-sm text-gray-600">عنوان <span className="text-red-500">*</span></label><input value={title} onChange={e => setTitle(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1" /></div>
+                  <div>
+              <label className="text-sm text-gray-600 mb-2 block">عکس محصول</label>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => document.getElementById('productImage').click()}
+                  className="w-20 h-20 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-300 flex items-center justify-center">
+                  {imagePreview ? <img src={imagePreview} className="w-full h-full object-cover rounded-2xl" /> : <Camera size={24} className="text-gray-400" />}
+                </button>
+                {imagePreview && <button onClick={() => { setImage(null); setImagePreview(null); }} className="text-red-500"><X size={18} /></button>}
+                <input id="productImage" type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setImage(f); setImagePreview(URL.createObjectURL(f)); } }} />
+              </div>
+            </div>
+            <div><label className="text-sm text-gray-600">عنوان <span className="text-red-500">*</span></label><input value={title} onChange={e => setTitle(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1" /></div>
                   <div className="grid grid-cols-2 gap-4">
                     <div><label className="text-sm text-gray-600">قیمت (تومان) <span className="text-red-500">*</span></label><input type="text" value={priceDisplay || formatPrice(price)} onChange={handlePriceChange} onBlur={handlePriceBlur} dir="ltr" className="w-full px-4 py-2.5 border rounded-xl text-sm mt-1" />
 {price && <p className="text-xs text-gray-500 mt-1">{numberToWords(Number(price))}</p>}</div>
@@ -300,6 +316,33 @@ const filteredColors = newColorName ? COLORS.filter(c => c.name.includes(newColo
 
         {loading ? <div className="text-center py-10">در حال بارگذاری...</div> : products.length === 0 ? (
           <div className="text-center py-20"><div className="text-6xl mb-4">📦</div><h3 className="text-lg font-bold text-gray-700 mb-2">هنوز محصولی اضافه نکردی!</h3><button onClick={() => setShowCreate(true)} className="bg-pink-600 text-white px-6 py-3 rounded-xl font-bold mt-4"><Plus size={18} className="inline mr-1" />اولین محصول</button></div>
+        ) : viewMode === 'grid' ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {sortedProducts.map(product => {
+              const isLowStock = product.stock > 0 && product.stock <= Number(lowStockAlert);
+              const isOutOfStock = product.stock === 0;
+              return (
+                <div key={product.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${isLowStock ? 'border-orange-400' : isOutOfStock ? 'border-red-300' : 'border-gray-100'}`}>
+                  <div className="aspect-square bg-pink-50 flex items-center justify-center text-3xl">
+                    {product.image ? <img src={product.image} alt="" className="w-full h-full object-cover" /> : '🛍️'}
+                  </div>
+                  <div className="p-3">
+                    <h3 className="font-bold text-sm truncate">{product.title}</h3>
+                    <p className="text-sm font-extrabold text-pink-600 mt-1">{Number(product.price).toLocaleString('fa-IR')} تومان</p>
+                    <p className="text-xs text-gray-400 mt-0.5">موجودی: {product.stock}</p>
+                    {isLowStock && <p className="text-xs text-orange-600">⚠️ فقط {product.stock} عدد</p>}
+                    {isOutOfStock && <p className="text-xs text-red-600">❌ اتمام</p>}
+                    <div className="flex gap-1 mt-2">
+                      <Link to={`/seller/products/${product.id}/edit`} className="flex-1 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold text-center">✏️</Link>
+                      <button onClick={() => toggleVisibility(product)} className={`flex-1 py-1.5 rounded-lg text-xs ${product.is_visible ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                        {product.is_visible ? '👁️' : '🙈'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div className="space-y-3">
             {sortedProducts.map(product => {

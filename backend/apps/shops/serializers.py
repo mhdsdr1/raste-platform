@@ -45,12 +45,24 @@ class ShopSerializer(serializers.ModelSerializer):
     products_count = serializers.IntegerField(read_only=True)
     active_products_count = serializers.IntegerField(read_only=True)
     owner_name = serializers.CharField(source='owner.get_full_name', read_only=True)
+    logo_url = serializers.SerializerMethodField()
+    banner_url = serializers.SerializerMethodField()
+
+    def get_logo_url(self, obj):
+        if obj.logo:
+            return obj.logo.url
+        return None
+
+    def get_banner_url(self, obj):
+        if obj.banner:
+            return obj.banner.url
+        return None
     
     class Meta:
         model = Shop
         fields = [
             'id', 'owner', 'owner_name', 'name', 'slug', 'description',
-            'logo', 'banner', 'shop_type', 'contact_phone', 'address',
+            'logo', 'banner', 'logo_url', 'banner_url', 'shop_type', 'contact_phone', 'address',
             'geo_lat', 'geo_lng', 'is_active',
             'products_count', 'active_products_count',
             'created_at', 'updated_at',

@@ -30,7 +30,7 @@ def create_shop(request):
 @permission_classes([IsAuthenticated])
 def list_my_shops(request):
     shops = request.user.shops.all()
-    return Response(ShopSerializer(shops, many=True).data)
+    return Response(ShopSerializer(shops, many=True, context={'request': request}).data)
 
 
 @extend_schema(description='جزئیات فروشگاه')
@@ -40,7 +40,7 @@ def shop_detail(request, shop_id):
         shop = Shop.objects.get(id=shop_id)
     except Shop.DoesNotExist:
         return Response({'error': 'فروشگاه یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
-    return Response(ShopSerializer(shop).data)
+    return Response(ShopSerializer(shop, context={'request': request}).data)
 
 
 @extend_schema(description='آپدیت فروشگاه')
@@ -55,8 +55,15 @@ def update_shop(request, shop_id):
     for field in allowed:
         if field in request.data:
             setattr(shop, field, request.data[field])
+    
+    # عکس‌ها از request.FILES میان
+    if 'logo' in request.FILES:
+        shop.logo = request.FILES['logo']
+    if 'banner' in request.FILES:
+        shop.banner = request.FILES['banner']
+    
     shop.save()
-    return Response(ShopSerializer(shop).data)
+    return Response(ShopSerializer(shop, context={'request': request}).data)
 
 
 @extend_schema(description='ایجاد محصول', request=ProductCreateSerializer)

@@ -383,8 +383,8 @@ export default function SellerShopsPage() {
                 className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-pink-400 to-pink-600 rounded-2xl flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
-                      {shop.name[0]}
+                    <div className="w-14 h-14 bg-gradient-to-br from-pink-400 to-pink-600 rounded-2xl flex items-center justify-center text-white text-xl font-bold flex-shrink-0 overflow-hidden">
+                      {shop.logo_url ? <img src={shop.logo_url} alt={shop.name} className="w-full h-full object-cover" /> : shop.name?.[0] || 'ف'}
                     </div>
                     <div>
                       <h3 className="font-extrabold text-gray-800 text-lg">{shop.name}</h3>

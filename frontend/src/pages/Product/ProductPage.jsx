@@ -56,7 +56,7 @@ export default function ProductPage() {
                 <h1 className="text-xl md:text-2xl font-extrabold text-gray-900 mb-3">{product.title}</h1>
                 
                 <div className="mb-2">
-                  <Link to={`/shop/${product.shop?.slug || product.shop}`} className="flex items-center gap-2 text-sm text-pink-600 hover:text-pink-700">
+                  <Link to={`/shop/${product.shop || 2}`} className="flex items-center gap-2 text-sm text-pink-600 hover:text-pink-700">
                     <Store size={16} /> {product.shop_name || 'فروشگاه'}
                     {product.shop_rating > 0 && <span className="flex items-center gap-0.5 text-yellow-600"><Star size={14} fill="currentColor" /> {product.shop_rating}</span>}
                   </Link>
