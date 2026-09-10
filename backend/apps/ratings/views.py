@@ -30,24 +30,34 @@ def create_rating(request):
     
     data = serializer.validated_data
     
-    # بررسی سفارش
+    # بررسی سفارش (برای MVP آزادتر)
     try:
-        order = Order.objects.get(
+        order = Order.objects.filter(
             id=data['order_id'],
             customer_user=request.user,
             status='delivered'
-        )
-    except Order.DoesNotExist:
-        return Response(
-            {'error': 'سفارش یافت نشد یا هنوز تحویل داده نشده.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        ).first()
+    except:
+        order = None
+    
+    # برای MVP: اگه سفارش نبود، فقط user رو چک می‌کنیم
+    if not order and not request.user.is_authenticated:
+        return Response({'error': 'برای ثبت امتیاز باید وارد شوید'}, status=status.HTTP_400_BAD_REQUEST)
     
     target_type = data['target_type']
     
     # تعیین rated_user
     if target_type == 'seller':
-        rated_user = order.product.shop.owner
+        if order:
+            rated_user = order.product.shop.owner
+        else:
+            # بدون سفارش - از product_id پیدا کن
+            from apps.shops.models import Product
+            try:
+                product = Product.objects.get(id=data.get('product_id'))
+                rated_user = product.shop.owner
+            except:
+                return Response({'error': 'محصول یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
     elif target_type == 'courier':
         if not hasattr(order, 'courier_request') or not order.courier_request.courier:
             return Response(
@@ -58,11 +68,12 @@ def create_rating(request):
     else:
         return Response({'error': 'نوع نامعتبر.'}, status=status.HTTP_400_BAD_REQUEST)
     
-    # بررسی تکراری نبودن
-    if PublicRating.objects.filter(rater=request.user, order=order, target_type=target_type).exists():
+    # حداکثر ۲ نظر
+    user_ratings_count = PublicRating.objects.filter(rater=request.user).count()
+    if user_ratings_count >= 2:
         return Response(
-            {'error': 'شما قبلاً امتیاز داده‌اید.'},
-            status=status.HTTP_409_CONFLICT
+            {'error': 'شما حداکثر ۲ نظر می‌توانید ثبت کنید.'},
+            status=status.HTTP_400_BAD_REQUEST
         )
     
     # ایجاد امتیاز
@@ -189,3 +200,74 @@ def my_hidden_ratings(request):
     
     ratings = SellerHiddenRating.objects.filter(seller=request.user)
     return Response(SellerHiddenRatingSerializer(ratings, many=True).data)
+
+
+@extend_schema(description='گزارش نظر نامناسب')
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def report_rating(request, rating_id):
+    try:
+        rating = PublicRating.objects.get(id=rating_id)
+    except PublicRating.DoesNotExist:
+        return Response({'error': 'نظر یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    
+    reason = request.data.get('reason', 'محتوای نامناسب')
+    
+    from .models import RatingReport
+    RatingReport.objects.create(rating=rating, reporter=request.user, reason=reason)
+    
+    return Response({'message': 'گزارش شما ثبت شد. مدیر بررسی خواهد کرد.'})
+
+
+@extend_schema(description='لیست گزارش‌ها (مدیر)')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_reports(request):
+    if not request.user.is_staff:
+        return Response({'error': 'دسترسی غیرمجاز'}, status=status.HTTP_403_FORBIDDEN)
+    
+    from .models import RatingReport
+    reports = RatingReport.objects.filter(is_resolved=False)
+    return Response([{
+        'id': r.id,
+        'rating_id': r.rating.id,
+        'comment': r.rating.comment,
+        'reason': r.reason,
+        'reporter': r.reporter.phone,
+        'created_at': r.created_at,
+    } for r in reports])
+
+
+@extend_schema(description='ویرایش نظر')
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_rating(request, rating_id):
+    try:
+        rating = PublicRating.objects.get(id=rating_id, rater=request.user)
+    except PublicRating.DoesNotExist:
+        return Response({'error': 'نظر یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if 'stars' in request.data:
+        rating.stars = request.data['stars']
+        rating.score = int(request.data['stars'] * 33.33)
+    if 'comment' in request.data:
+        rating.comment = request.data['comment']
+    rating.save()
+    return Response(PublicRatingSerializer(rating).data)
+
+
+@extend_schema(description='حذف نظر')
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_rating(request, rating_id):
+    try:
+        rating = PublicRating.objects.get(id=rating_id)
+    except PublicRating.DoesNotExist:
+        return Response({'error': 'نظر یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # فقط صاحب نظر یا مدیر (is_staff) می‌تونه حذف کنه
+    if rating.rater != request.user and not request.user.is_staff:
+        return Response({'error': 'دسترسی غیرمجاز'}, status=status.HTTP_403_FORBIDDEN)
+    
+    rating.delete()
+    return Response({'message': 'نظر حذف شد'})

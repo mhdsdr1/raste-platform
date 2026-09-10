@@ -4,7 +4,8 @@ from .models import PublicRating, SellerHiddenRating
 
 class PublicRatingCreateSerializer(serializers.Serializer):
     """سریالایزر ایجاد امتیاز"""
-    order_id = serializers.IntegerField()
+    order_id = serializers.IntegerField(required=False)
+    product_id = serializers.IntegerField(required=False)
     target_type = serializers.ChoiceField(choices=['seller', 'courier'])
     stars = serializers.IntegerField(min_value=1, max_value=3)
     comment = serializers.CharField(required=False, allow_blank=True)

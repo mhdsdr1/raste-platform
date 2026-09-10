@@ -35,7 +35,8 @@ class PublicRating(models.Model):
     
     # سفارش مرتبط
     order = models.ForeignKey(
-        Order, on_delete=models.CASCADE,
+        Order, null=True, blank=True,
+        on_delete=models.CASCADE,
         related_name='ratings',
         verbose_name='سفارش'
     )
@@ -96,7 +97,6 @@ class PublicRating(models.Model):
     class Meta:
         verbose_name = 'امتیاز عمومی'
         verbose_name_plural = 'امتیازات عمومی'
-        unique_together = ['rater', 'order', 'target_type']
         indexes = [
             models.Index(fields=['rated_user']),
             models.Index(fields=['order']),
@@ -157,3 +157,15 @@ class SellerHiddenRating(models.Model):
              self.low_return_score + self.referral_score) / 4
         )
         super().save(*args, **kwargs)
+
+
+class RatingReport(models.Model):
+    rating = models.ForeignKey(PublicRating, on_delete=models.CASCADE, related_name='reports')
+    reporter = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    reason = models.TextField(default='محتوای نامناسب')
+    is_resolved = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'گزارش نظر'
+        verbose_name_plural = 'گزارش‌های نظرات'

@@ -59,6 +59,7 @@ export default function ProductPage() {
                   <Link to={`/shop/${product.shop || 2}`} className="flex items-center gap-2 text-sm text-pink-600 hover:text-pink-700">
                     <Store size={16} /> {product.shop_name || 'فروشگاه'}
                     {product.shop_rating > 0 && <span className="flex items-center gap-0.5 text-yellow-600"><Star size={14} fill="currentColor" /> {product.shop_rating}</span>}
+                <Link to={`/ratings/${product.id}`} className="text-xs text-gray-400 hover:text-pink-600">امتیازات و نظرات</Link>
                   </Link>
                   <p className="text-xs text-gray-400 mr-6 mt-0.5">فروشنده: {product.owner_name || 'نامشخص'}</p>
                 </div>
