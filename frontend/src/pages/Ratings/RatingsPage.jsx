@@ -14,6 +14,7 @@ export default function RatingsPage() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [hasPurchased, setHasPurchased] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
   const [stars, setStars] = useState(0);
@@ -35,6 +36,17 @@ export default function RatingsPage() {
       const ratingsRes = await api.get(`/ratings/user/${ownerId}/?type=seller`);
       setRatings(ratingsRes.data.ratings || []);
       setSummary(ratingsRes.data.summary || null);
+      
+      // چک کن کاربر این محصول رو خریده
+      if (user) {
+        try {
+          const ordersRes = await api.get(`/orders/my/?seller_id=${sellerId}`);
+          const hasOrder = ordersRes.data.some(o => 
+            o.product === Number(productId) && o.status === 'delivered'
+          );
+          setHasPurchased(hasOrder || user.is_staff);
+        } catch (e) {}
+      }
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
@@ -111,19 +123,37 @@ export default function RatingsPage() {
       <main className="max-w-3xl mx-auto px-4 py-6">
         {/* خلاصه امتیاز */}
         <div className="bg-white rounded-2xl p-6 mb-4 border text-center">
+          <div className="text-sm text-gray-500 mb-1">میزان رضایتمندی</div>
           <div className="text-4xl font-extrabold text-pink-600">
             {summary?.average_stars ? `${Math.round((summary.average_stars / 3) * 100)}%` : '0%'}
           </div>
-          <div className="flex justify-center text-yellow-400 my-2">
-            {[1,2,3].map(i => (
-              <Star key={i} size={24} fill={i <= Math.round(summary?.average_stars || 0) ? 'currentColor' : 'none'} />
-            ))}
+          <div className="flex justify-center my-2 gap-1">
+            {[1,2,3].map(i => {
+              const avg = summary?.average_stars || 0;
+              const fillPercent = Math.max(0, Math.min(1, avg - (i - 1))) * 100;
+              return (
+                <div key={i} className="relative" style={{ width: '28px', height: '28px' }}>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="2" className="absolute top-0 left-0">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                  </svg>
+                  <div className="absolute top-0 overflow-hidden" style={{ width: `${fillPercent}%`, height: '28px', right: 0 }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="#facc15" stroke="#facc15" strokeWidth="2" style={{ position: 'absolute', right: 0 }}>
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <p className="text-sm text-gray-500">{summary?.total_ratings || 0} نظر ثبت شده</p>
         </div>
 
         {/* دکمه ثبت */}
-        {!showForm ? (
+        {!hasPurchased && !user?.is_staff && !editingId ? (
+          <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 mb-6 text-center">
+            <p className="text-orange-700 text-sm">فقط پس از خرید و تحویل محصول می‌توانید نظر دهید</p>
+          </div>
+        ) : !showForm ? (
           <button onClick={() => { setEditingId(null); setStars(0); setComment(''); setShowForm(true); }}
             className="w-full bg-pink-600 text-white py-3 rounded-2xl font-bold mb-6">
             ⭐ ثبت امتیاز

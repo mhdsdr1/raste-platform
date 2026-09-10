@@ -153,4 +153,5 @@ def me(request):
         'monthly_product_limit': user.monthly_product_limit,
         'monthly_service_limit': user.monthly_service_limit,
         'is_blocked': user.is_blocked,
+        'is_staff': user.is_staff,
     })

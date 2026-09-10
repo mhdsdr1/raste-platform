@@ -30,19 +30,31 @@ def create_rating(request):
     
     data = serializer.validated_data
     
-    # بررسی سفارش (برای MVP آزادتر)
-    try:
+    # بررسی سفارش - فقط خریدار واقعی
+    order_id = data.get('order_id')
+    product_id = data.get('product_id')
+    
+    order = None
+    if order_id:
         order = Order.objects.filter(
-            id=data['order_id'],
+            id=order_id,
             customer_user=request.user,
             status='delivered'
         ).first()
-    except:
-        order = None
+    elif product_id:
+        # چک کن این کاربر این محصول رو خریده و تحویل گرفته
+        order = Order.objects.filter(
+            product_id=product_id,
+            customer_user=request.user,
+            status='delivered'
+        ).first()
     
-    # برای MVP: اگه سفارش نبود، فقط user رو چک می‌کنیم
-    if not order and not request.user.is_authenticated:
-        return Response({'error': 'برای ثبت امتیاز باید وارد شوید'}, status=status.HTTP_400_BAD_REQUEST)
+    # مدیر می‌تونه بدون خرید هم نظر بده (برای تست)
+    if not order and not request.user.is_staff:
+        return Response(
+            {'error': 'فقط پس از خرید و تحویل محصول می‌توانید نظر دهید'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
     
     target_type = data['target_type']
     
