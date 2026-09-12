@@ -92,6 +92,8 @@ class Product(models.Model):
     description = models.TextField(null=True, blank=True, default='', verbose_name='توضیحات')
     price = models.DecimalField(max_digits=12, decimal_places=0, verbose_name='قیمت (تومان)')
     stock = models.IntegerField(default=1, verbose_name='موجودی')
+    purchase_price = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True, verbose_name='قیمت خرید')
+    warehouse_stock = models.IntegerField(default=0, verbose_name='موجودی انبار')
     
     # تصاویر
     image = models.ImageField(upload_to='products/', null=True, blank=True, verbose_name='تصویر اصلی')

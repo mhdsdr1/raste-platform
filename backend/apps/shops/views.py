@@ -121,7 +121,7 @@ def update_product(request, product_id):
         product = Product.objects.get(id=product_id, shop__owner=request.user)
     except Product.DoesNotExist:
         return Response({'error': 'محصول یافت نشد یا دسترسی ندارید'}, status=status.HTTP_404_NOT_FOUND)
-    allowed = ['title', 'description', 'price', 'stock', 'condition', 'category', 'color',
+    allowed = ['title', 'description', 'price', 'stock', 'purchase_price', 'warehouse_stock', 'condition', 'category', 'color',
                       'colors',
                       'sizes',
                'health_status', 'health_description', 'allow_local_test', 'allow_courier',
@@ -132,6 +132,10 @@ def update_product(request, product_id):
             if field in ['colors', 'sizes'] and isinstance(value, str):
                 import json
                 value = json.loads(value)
+            # تبدیل رشته به بولین برای فیلدهای checkbox
+            if field in ['allow_courier', 'allow_local_test', 'is_visible', 'buy_link_active']:
+                if isinstance(value, str):
+                    value = value.lower() == 'true'
             setattr(product, field, value)
     
     # عکس محصول از request.FILES

@@ -13,3 +13,7 @@ urlpatterns = [
     path('discounts/my/', views.my_discount_codes, name='my-discounts'),
     path('discounts/validate/', views.validate_discount_code, name='validate-discount'),
 ]
+
+urlpatterns += [
+    path('seller/analytics/', views.seller_analytics, name='seller-analytics'),
+]

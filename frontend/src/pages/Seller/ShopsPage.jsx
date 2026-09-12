@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Store, Plus, Edit3, BarChart3, Package, Phone, Eye, EyeOff, X, AlertCircle } from 'lucide-react';
+import { Store, Plus, Edit3, Package, Phone, Eye, EyeOff, X, AlertCircle } from 'lucide-react';
 import api from '../../services/api';
 import { fadeIn, stagger } from '../../utils/animations';
 import { toast } from 'sonner';
@@ -408,10 +408,6 @@ export default function SellerShopsPage() {
                     <Link to={`/seller/shops/${shop.id}/edit`}
                       className="w-9 h-9 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-xl flex items-center justify-center transition-all">
                       <Edit3 size={16} />
-                    </Link>
-                    <Link to={`/seller/shops/${shop.id}/analytics`}
-                      className="w-9 h-9 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center transition-all">
-                      <BarChart3 size={16} />
                     </Link>
                   </div>
                 </div>

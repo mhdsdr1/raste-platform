@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { 
   User, Package, Star, Wallet, Store, Truck, 
   MessageCircle, Gift, Ticket, LogOut, ChevronLeft,
-  ShoppingBag, Clock, CheckCircle, XCircle
+  ShoppingBag, Clock, CheckCircle, XCircle, BarChart3
 } from 'lucide-react';
 import api from '../../services/api';
 import useAuthStore from '../../store/authStore';
@@ -62,6 +62,7 @@ export default function DashboardPage() {
 
   const menuItems = [
     { icon: Store, label: 'فروشگاه‌های من', href: '/seller/shops', color: 'text-pink-600' },
+    { icon: BarChart3, label: 'داشبورد فروش', href: '/seller/analytics', color: 'text-green-600' },
     { icon: Package, label: 'هم‌خریدها', href: '/deals', color: 'text-purple-600' },
     { icon: Truck, label: 'پیک‌ها', href: '/courier', color: 'text-orange-600' },
     { icon: MessageCircle, label: 'پیام‌ها', href: '/chat', color: 'text-blue-600' },

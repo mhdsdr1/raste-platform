@@ -26,7 +26,7 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'shop', 'shop_name', 'owner_name', 'title', 'description', 'price', 'stock',
+            'id', 'shop', 'shop_name', 'owner_name', 'title', 'description', 'price', 'stock', 'purchase_price', 'warehouse_stock',
             'image', 'image_url', 'condition', 'health_status', 'health_description',
             'allow_local_test', 'allow_courier', 'story', 'category', 'color',
         'colors',
@@ -43,7 +43,7 @@ class ProductCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'title', 'description', 'price', 'stock', 'image',
+            'title', 'description', 'price', 'stock', 'purchase_price', 'warehouse_stock', 'image',
             'condition', 'health_status', 'health_description',
             'allow_local_test', 'allow_courier', 'story', 'category', 'color',
         'colors',

@@ -291,3 +291,103 @@ def apply_discount_code(code, seller_id, phone, order_amount, ip_address='0.0.0.
     discount.save(update_fields=['used_count'])
     
     return result
+
+
+@extend_schema(description='آنالیتیکس فروشنده - نمودار فروش')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def seller_analytics(request):
+    """آمار فروش فروشنده برای نمودارها"""
+    from django.db.models import Sum, Count
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    if not request.user.is_seller:
+        return Response({'error': 'فقط فروشندگان'}, status=status.HTTP_403_FORBIDDEN)
+    
+    period = request.query_params.get('period', 'monthly')  # daily, weekly, monthly, yearly
+    
+    # فروش‌های فروشنده
+    orders = Order.objects.filter(
+        product__shop__owner=request.user,
+        status__in=['confirmed', 'packed', 'shipped', 'delivered']
+    )
+    
+    now = timezone.now()
+    
+    # داده‌های نمودار
+    chart_data = []
+    
+    if period == 'daily':
+        # ۳۰ روز گذشته
+        for i in range(29, -1, -1):
+            day = now - timedelta(days=i)
+            day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start + timedelta(days=1)
+            day_orders = orders.filter(created_at__gte=day_start, created_at__lt=day_end)
+            chart_data.append({
+                'label': day_start.strftime('%m/%d'),
+                'amount': float(day_orders.aggregate(Sum('total_price'))['total_price__sum'] or 0),
+                'count': day_orders.count()
+            })
+    elif period == 'weekly':
+        # ۱۲ هفته گذشته
+        for i in range(11, -1, -1):
+            week_start = (now - timedelta(weeks=i)).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
+            week_end = week_start + timedelta(days=7)
+            week_orders = orders.filter(created_at__gte=week_start, created_at__lt=week_end)
+            chart_data.append({
+                'label': f'هفته {12-i}',
+                'amount': float(week_orders.aggregate(Sum('total_price'))['total_price__sum'] or 0),
+                'count': week_orders.count()
+            })
+    elif period == 'yearly':
+        # ۱۲ ماه گذشته
+        for i in range(11, -1, -1):
+            month_start = (now - timedelta(days=i*30)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            if month_start.month == 12:
+                month_end = month_start.replace(year=month_start.year+1, month=1)
+            else:
+                month_end = month_start.replace(month=month_start.month+1)
+            month_orders = orders.filter(created_at__gte=month_start, created_at__lt=month_end)
+            chart_data.append({
+                'label': month_start.strftime('%Y/%m'),
+                'amount': float(month_orders.aggregate(Sum('total_price'))['total_price__sum'] or 0),
+                'count': month_orders.count()
+            })
+    else:  # monthly (default)
+        # ۳۰ روز گذشته
+        for i in range(29, -1, -1):
+            day = now - timedelta(days=i)
+            day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start + timedelta(days=1)
+            day_orders = orders.filter(created_at__gte=day_start, created_at__lt=day_end)
+            chart_data.append({
+                'label': day_start.strftime('%m/%d'),
+                'amount': float(day_orders.aggregate(Sum('total_price'))['total_price__sum'] or 0),
+                'count': day_orders.count()
+            })
+    
+    # آمار کلی
+    total_sales = float(orders.aggregate(Sum('total_price'))['total_price__sum'] or 0)
+    total_orders = orders.count()
+    
+    # پرفروش‌ترین محصولات
+    top_products = []
+    products = request.user.shops.values_list('products', flat=True)
+    for p in orders.values('product__title').annotate(
+        total=Sum('total_price'), count=Count('id')
+    ).order_by('-total')[:5]:
+        top_products.append({
+            'title': p['product__title'],
+            'amount': float(p['total'] or 0),
+            'count': p['count']
+        })
+    
+    return Response({
+        'total_sales': total_sales,
+        'total_orders': total_orders,
+        'avg_order': total_sales / total_orders if total_orders > 0 else 0,
+        'chart_data': chart_data,
+        'top_products': top_products,
+    })
