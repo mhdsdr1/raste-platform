@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Shop, Product
+from .models import Shop, Product, SellerExpense
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -86,3 +86,10 @@ class ShopCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shop
         fields = ['name', 'slug', 'description', 'shop_type', 'contact_phone', 'address']
+
+
+class SellerExpenseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SellerExpense
+        fields = ['id', 'shop', 'title', 'icon', 'amount', 'expense_date', 'notes', 'created_at']
+        read_only_fields = ['id', 'created_at']

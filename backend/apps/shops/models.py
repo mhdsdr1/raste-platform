@@ -156,3 +156,35 @@ class Product(models.Model):
         if self.colors:
             return sum(int(v) for v in self.colors.values() if isinstance(v, (int, float)) and v > 0)
         return None
+
+
+class SellerExpense(models.Model):
+    """هزینه‌های جانبی فروشنده"""
+    
+    seller = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='expenses',
+        verbose_name='فروشنده'
+    )
+    shop = models.ForeignKey(
+        'shops.Shop',
+        on_delete=models.CASCADE,
+        related_name='expenses',
+        null=True, blank=True,
+        verbose_name='فروشگاه'
+    )
+    title = models.CharField(max_length=100, verbose_name='عنوان')
+    icon = models.CharField(max_length=10, blank=True, default='', verbose_name='آیکون')
+    amount = models.DecimalField(max_digits=12, decimal_places=0, verbose_name='مبلغ (تومان)')
+    expense_date = models.DateField(verbose_name='تاریخ')
+    notes = models.TextField(blank=True, default='', verbose_name='یادداشت')
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = 'هزینه جانبی'
+        verbose_name_plural = 'هزینه‌های جانبی'
+        ordering = ['-expense_date', '-created_at']
+    
+    def __str__(self):
+        return f"{self.icon} {self.title} - {self.amount:,} تومان"

@@ -46,3 +46,17 @@ urlpatterns += [
 urlpatterns += [
     path('products/<int:product_id>/delete/', views.delete_product, name='delete-product'),
 ]
+
+urlpatterns += [
+    path('expenses/', views.list_expenses, name='list-expenses'),
+    path('expenses/create/', views.create_expense, name='create-expense'),
+    path('expenses/<int:expense_id>/delete/', views.delete_expense, name='delete-expense'),
+]
+
+urlpatterns += [
+    path('expenses/<int:expense_id>/', views.update_expense, name='update-expense'),
+]
+
+urlpatterns += [
+    path('expenses/matrix/', views.expenses_matrix, name='expenses-matrix'),
+]

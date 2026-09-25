@@ -10,6 +10,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/react-datepicker": "^7.0.0",
     "@vitejs/plugin-react": "^6.0.3",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
@@ -20,6 +21,7 @@
     "@tanstack/react-query": "^5.101.2",
     "axios": "^1.18.1",
     "framer-motion": "^12.42.2",
+    "jalaali-js": "^2.0.1",
     "lucide-react": "^1.25.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
