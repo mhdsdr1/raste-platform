@@ -59,4 +59,12 @@ urlpatterns += [
 
 urlpatterns += [
     path('expenses/matrix/', views.expenses_matrix, name='expenses-matrix'),
+    # بدهکاران و بستانکاران
+    path('debts/', views.list_debts, name='list-debts'),
+    path('debts/create/', views.create_debt, name='create-debt'),
+    path('debts/person/', views.get_person_by_nid, name='get-person-by-nid'),
+    path('debts/<int:debt_id>/', views.update_debt, name='update-debt'),
+    path('debts/<int:debt_id>/delete/', views.delete_debt, name='delete-debt'),
+    path('debts/<int:debt_id>/pay/', views.pay_debt, name='pay-debt'),
+
 ]

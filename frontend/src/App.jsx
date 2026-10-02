@@ -18,6 +18,7 @@ const RatingsPage = lazy(() => import('./pages/Ratings/RatingsPage.jsx'));
 const ReportsPage = lazy(() => import('./pages/Ratings/ReportsPage.jsx'));
 const AnalyticsPage = lazy(() => import('./pages/Seller/AnalyticsPage.jsx'));
 const ExpensesPage = lazy(() => import('./pages/Seller/ExpensesPage.jsx'));
+const DebtsPage = lazy(() => import('./pages/Seller/DebtsPage.jsx'));
 
 function LoadingSpinner() {
   return (
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="/admin/ratings/reports" element={<ReportsPage />} />
         <Route path="/seller/analytics" element={<AnalyticsPage />} />
         <Route path="/seller/expenses" element={<ExpensesPage />} />
+        <Route path="/seller/debts" element={<DebtsPage />} />
       </Routes>
     </Suspense>
   );

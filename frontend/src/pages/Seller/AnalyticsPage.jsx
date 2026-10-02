@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp, ShoppingBag, DollarSign, Percent, Wallet, X, Calendar } from 'lucide-react';
+import { TrendingUp, ShoppingBag, DollarSign, Percent, Wallet, X, Calendar, Users } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 import api from '../../services/api';
 
@@ -47,6 +47,8 @@ export default function AnalyticsPage() {
   const [selectedShop, setSelectedShop] = useState(searchParams.get('shop') || 'all');
   const [showOrders, setShowOrders] = useState(false);
   const [showExpenses, setShowExpenses] = useState(false);
+  const [showDebts, setShowDebts] = useState(false);
+  const [debtsData, setDebtsData] = useState(null);
   const [showMatrix, setShowMatrix] = useState(false);
   const [matrixData, setMatrixData] = useState(null);
   const [matrixDateFrom, setMatrixDateFrom] = useState('');
@@ -128,6 +130,10 @@ export default function AnalyticsPage() {
     if (searchParams.get('showExpenses') === 'true') {
       setShowExpenses(true);
     }
+    if (searchParams.get('showDebts') === 'true') {
+      setShowDebts(true);
+      fetchDebts();
+    }
   }, [searchParams]);
   useEffect(() => {
     if (showMatrix) fetchMatrix(matrixDateFrom, matrixDateTo);
@@ -174,6 +180,15 @@ export default function AnalyticsPage() {
     } catch (e) { return ''; }
   };
 
+  const fetchDebts = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (selectedShop !== 'all') params.append('shop_id', selectedShop);
+      const res = await api.get(`/shops/debts/?${params.toString()}`);
+      setDebtsData(res.data);
+    } catch (e) { console.error(e); }
+  };
+
   const fetchMatrix = async (from, to) => {
     console.log('fetchMatrix called with:', from, to);
     try {
@@ -199,9 +214,14 @@ export default function AnalyticsPage() {
       <main className="max-w-4xl mx-auto px-3 py-4">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-lg font-extrabold text-gray-800">💰 داشبورد مالی</h1>
-          <button onClick={() => setShowExpenses(true)} className="text-xs bg-pink-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
-            <Wallet size={12} /> هزینه‌ها
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setShowExpenses(true)} className="text-xs bg-pink-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
+              <Wallet size={12} /> هزینه‌ها
+            </button>
+            <button onClick={() => { setShowDebts(true); fetchDebts(); }} className="text-xs bg-fuchsia-500 hover:bg-fuchsia-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
+              <Users size={12} /> بدهکاران/بستانکاران
+            </button>
+          </div>
         </div>
 
         {/* انتخاب فروشگاه */}
@@ -386,6 +406,130 @@ export default function AnalyticsPage() {
       </main>
 
       
+
+      {/* مودال بدهکاران/بستانکاران */}
+      {showDebts && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3" onClick={() => setShowDebts(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            
+            {/* هدر */}
+            <div className="flex items-center justify-between p-3 border-b bg-gradient-to-l from-blue-500 to-blue-600">
+              <h2 className="font-bold text-white text-sm">
+                📋 بدهکاران/بستانکاران
+                <span className="text-[10px] text-white/80 mr-2">
+                  ({selectedShop === 'all' 
+                    ? 'همه فروشگاه‌ها' 
+                    : shops.find(s => String(s.id) === String(selectedShop))?.name || ''})
+                </span>
+              </h2>
+              <button onClick={() => setShowDebts(false)} className="text-white"><X size={18} /></button>
+            </div>
+
+            {/* خلاصه */}
+            {debtsData?.summary && (
+              <div className="p-3 bg-blue-50 border-b">
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <p className="text-[9px] text-gray-500">🔴 بدهکاران</p>
+                    <p className="text-xs font-bold text-red-600">{Number(debtsData.summary.debtor_remaining).toLocaleString('fa-IR')}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-gray-500">🔵 بستانکاران</p>
+                    <p className="text-xs font-bold text-blue-600">{Number(debtsData.summary.creditor_remaining).toLocaleString('fa-IR')}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-gray-500">📊 تراز</p>
+                    <p className={`text-xs font-bold ${debtsData.summary.balance >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                      {Number(Math.abs(debtsData.summary.balance)).toLocaleString('fa-IR')} تومان
+                    </p>
+                    <p className="text-[8px] text-gray-400">
+                      {debtsData.summary.balance >= 0 ? 'بدهکار' : 'بستانکار'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* لیست */}
+            <div className="overflow-y-auto max-h-[55vh] p-3">
+              {!debtsData || !debtsData.debts?.length ? (
+                <div className="text-center py-10 text-gray-400 text-xs">هنوز بدهکاری ثبت نشده</div>
+              ) : (
+                <div className="space-y-2">
+                  {selectedShop === 'all' ? (
+                    // حالت همه فروشگاه‌ها: خلاصه هر فروشگاه
+                    !debtsData.shop_summary || debtsData.shop_summary.length === 0 ? (
+                      <div className="text-center py-10 text-gray-400 text-xs">هنوز بدهکاری ثبت نشده</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {debtsData.shop_summary.map(s => (
+                          <button 
+                            key={s.shop_id}
+                            onClick={() => {
+                              setSelectedShop(String(s.shop_id));
+                              setShowDebts(false);
+                            }}
+                            className="w-full border border-gray-100 rounded-xl p-3 hover:border-fuchsia-300 hover:bg-fuchsia-50/30 transition-all text-right"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-bold text-gray-700">
+                                {s.shop_id ? '🏪 ' + s.shop_name : '📊 ' + s.shop_name}
+                              </span>
+                              <span className={`text-xs font-extrabold ${s.balance >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                                {Number(Math.abs(s.balance)).toLocaleString('fa-IR')} تومان
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px]">
+                              <div className="flex gap-2">
+                                <span className="text-red-600">🔴 {Number(s.debtor_remaining).toLocaleString('fa-IR')}</span>
+                              </div>
+                              <div className="flex gap-2">
+                                <span className="text-blue-600">🔵 {Number(s.creditor_remaining).toLocaleString('fa-IR')}</span>
+                              </div>
+                            </div>
+                            <p className="text-[9px] text-gray-400 mt-1 text-center">
+                              {s.balance >= 0 ? '🔴 بدهکار' : '🔵 بستانکار'}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  ) : (
+                    // حالت فروشگاه خاص: لیست تراکنش‌ها
+                    debtsData.debts.map(d => (
+                      <div key={d.id} className="border border-gray-100 rounded-xl p-2.5">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-xs font-bold ${d.debt_type === 'debtor' ? 'text-red-600' : 'text-blue-600'}`}>
+                            {d.debt_type === 'debtor' ? '🔴' : '🔵'} {d.person_name}
+                          </span>
+                          <span className={`text-xs font-extrabold ${d.debt_type === 'debtor' ? 'text-red-500' : 'text-blue-500'}`}>
+                            {Number(d.amount).toLocaleString('fa-IR')}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                          <span>{d.person_phone}</span>
+                        </div>
+                        {d.notes && <p className="text-[10px] text-gray-400 mt-1">{d.notes}</p>}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* دکمه‌ها */}
+            <div className="p-3 border-t bg-gray-50 flex gap-2">
+              <Link 
+                to={`/seller/debts${selectedShop !== 'all' ? `?shop=${selectedShop}` : ''}`}
+                className="flex-1 text-center text-xs bg-blue-600 text-white py-2 rounded-lg font-bold"
+              >
+                ⚙️ مدیریت بدهکاران/بستانکاران
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* مودال هزینه‌ها */}
       {showExpenses && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3" onClick={() => setShowExpenses(false)}>

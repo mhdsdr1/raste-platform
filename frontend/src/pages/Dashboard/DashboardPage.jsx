@@ -62,7 +62,7 @@ export default function DashboardPage() {
 
   const menuItems = [
     { icon: Store, label: 'فروشگاه‌های من', href: '/seller/shops', color: 'text-pink-600' },
-    { icon: BarChart3, label: 'داشبورد فروش', href: '/seller/analytics', color: 'text-green-600' },
+    { icon: BarChart3, label: 'داشبورد مالی', href: '/seller/analytics', color: 'text-green-600' },
     { icon: Package, label: 'هم‌خریدها', href: '/deals', color: 'text-purple-600' },
     { icon: Truck, label: 'پیک‌ها', href: '/courier', color: 'text-orange-600' },
     { icon: MessageCircle, label: 'پیام‌ها', href: '/chat', color: 'text-blue-600' },

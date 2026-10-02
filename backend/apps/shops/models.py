@@ -188,3 +188,98 @@ class SellerExpense(models.Model):
     
     def __str__(self):
         return f"{self.icon} {self.title} - {self.amount:,} تومان"
+
+class SellerDebt(models.Model):
+    """بدهکاران و بستانکاران فروشنده"""
+    
+    DEBT_TYPE_CHOICES = [
+        ('debtor', 'بدهکار (طلب من از دیگران)'),
+        ('creditor', 'بستانکار (طلب دیگران از من)'),
+    ]
+    
+    PAYMENT_TYPE_CHOICES = [
+        ('cash', 'نقدی'),
+        ('check', 'چکی'),
+        ('installment', 'اقساطی'),
+        ('credit', 'نسیه'),
+    ]
+    
+    seller = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='debts',
+        verbose_name='فروشنده'
+    )
+    shop = models.ForeignKey(
+        'shops.Shop',
+        on_delete=models.SET_NULL,
+        related_name='debts',
+        null=True, blank=True,
+        verbose_name='فروشگاه'
+    )
+    debt_type = models.CharField(
+        max_length=10,
+        choices=DEBT_TYPE_CHOICES,
+        verbose_name='نوع'
+    )
+    
+    # اطلاعات شخص
+    person_name = models.CharField(max_length=100, verbose_name='نام شخص')
+    person_phone = models.CharField(max_length=15, verbose_name='شماره تماس')
+    person_national_id = models.CharField(max_length=10, blank=True, default='', verbose_name='کد ملی')
+    person_address = models.TextField(blank=True, default='', verbose_name='آدرس')
+    person_postal_code = models.CharField(max_length=10, blank=True, default='', verbose_name='کد پستی')
+    bank_name = models.CharField(max_length=50, blank=True, default='', verbose_name='نام بانک')
+    card_number = models.CharField(max_length=16, blank=True, default='', verbose_name='شماره کارت')
+    sheba_number = models.CharField(max_length=26, blank=True, default='', verbose_name='شماره شبا')
+    
+    # مالی
+    amount = models.DecimalField(max_digits=12, decimal_places=0, verbose_name='مبلغ (تومان)')
+    paid_amount = models.DecimalField(max_digits=12, decimal_places=0, default=0, verbose_name='پرداخت‌شده')
+    
+    # سررسید
+    due_date = models.DateField(null=True, blank=True, verbose_name='تاریخ سررسید')
+    payment_type = models.CharField(
+        max_length=15,
+        choices=PAYMENT_TYPE_CHOICES,
+        default='credit',
+        verbose_name='نوع پرداخت'
+    )
+    
+    # اقساط
+    is_installment = models.BooleanField(default=False, verbose_name='اقساطی')
+    installment_count = models.IntegerField(null=True, blank=True, verbose_name='تعداد اقساط')
+    installment_amount = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True, verbose_name='مبلغ هر قسط')
+    
+    # توضیحات
+    notes = models.TextField(blank=True, default='', verbose_name='شرح')
+    transaction_date = models.DateField(verbose_name='تاریخ تراکنش')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = 'بدهکار/بستانکار'
+        verbose_name_plural = 'بدهکاران و بستانکاران'
+        ordering = ['-transaction_date', '-created_at']
+        indexes = [
+            models.Index(fields=['seller', 'debt_type']),
+            models.Index(fields=['seller', 'person_name']),
+            models.Index(fields=['due_date']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_debt_type_display()} - {self.person_name} - {self.amount}"
+    
+    @property
+    def remaining(self):
+        """مانده"""
+        return float(self.amount) - float(self.paid_amount)
+    
+    @property
+    def is_overdue(self):
+        """آیا سررسید گذشته؟"""
+        from django.utils import timezone
+        if not self.due_date:
+            return False
+        return self.due_date < timezone.now().date() and self.remaining > 0
