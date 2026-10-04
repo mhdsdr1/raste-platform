@@ -49,11 +49,17 @@ export default function DebtsPage() {
   
   // فیلترها
   const [filterTab, setFilterTab] = useState('date');
+  const [dueFilterType, setDueFilterType] = useState('all');
+  const [dueSearch, setDueSearch] = useState('');
+  const [dueSort, setDueSort] = useState('desc');
+  const [dueView, setDueView] = useState('week');  // week | month
+  const [showDueSuggestions, setShowDueSuggestions] = useState(false);
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [personDebts, setPersonDebts] = useState([]);
   const [personSort, setPersonSort] = useState('desc'); // desc | asc
   const [personSortBy, setPersonSortBy] = useState('date'); // date | due // date | persons | overdue
   const [searchPerson, setSearchPerson] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [filterType, setFilterType] = useState('all');
   const [sortOrder, setSortOrder] = useState('asc');  // asc | desc // all | debtor | creditor
   const [dateFrom, setDateFrom] = useState('');
@@ -491,13 +497,24 @@ export default function DebtsPage() {
       const savedPerson = returnToPerson;
       setReturnToPerson(null);
       
-      // fetch و بعد open
+      // ═══ fetch کامل با همه stateها ═══
       try {
         const params = new URLSearchParams();
         if (selectedShop !== 'all') params.append('shop_id', selectedShop);
+        if (filterType !== 'all') params.append('debt_type', filterType);
+        if (searchPerson) params.append('person_name', searchPerson);
+        if (dateFrom) params.append('date_from', dateFrom);
+        if (dateTo) params.append('date_to', dateTo);
+        if (filterTab === 'overdue') params.append('overdue', 'true');
+        params.append('sort', sortOrder);
+        
         const res = await api.get(`/shops/debts/?${params.toString()}`);
         const freshDebts = res.data.debts || [];
+        
+        // ═══ آپدیت همه stateها ═══
         setDebts(freshDebts);
+        setSummary(res.data.summary || {});
+        setPersons(res.data.persons || []);
         
         // اگه از مودال شخص اومده بودیم، دوباره بازش کن
         if (savedPerson) {
@@ -526,12 +543,17 @@ export default function DebtsPage() {
     setPersonNationalId(debt.person_national_id || '');
     setPersonAddress(debt.person_address || '');
     setPersonPostalCode(debt.person_postal_code || '');
+    setBankName(debt.bank_name || '');
+    setCardNumber(debt.card_number || '');
+    setShebaNumber(debt.sheba_number || '');
     setAmount(debt.amount);
     setAmountDisplay(Number(debt.amount).toLocaleString('fa-IR'));
-    setTransactionDate(debt.transaction_date);
-    setDueDate(debt.due_date || '');
+    // ═══ استفاده از تاریخ شمسی ═══
+    setTransactionDate(debt.transaction_date_shamsi || debt.transaction_date);
+    setDueDate(debt.due_date_shamsi || debt.due_date || '');
     setPaymentType(debt.payment_type);
     setNotes(debt.notes || '');
+    setErrors({ phone: '', nationalId: '', postalCode: '', cardNumber: '', sheba: '' });
     setShowForm(true);
   };
   
@@ -573,7 +595,232 @@ export default function DebtsPage() {
     }
   };
   
-  const shopName = selectedShop === 'all' 
+  // ═══ پیشنهادات جستجو ═══
+  const suggestions = searchPerson.length >= 2 
+    ? debts
+        .filter(d => 
+          d.person_name?.toLowerCase().includes(searchPerson.toLowerCase()) ||
+          d.person_phone?.includes(searchPerson) ||
+          d.person_national_id?.includes(searchPerson)
+        )
+        .reduce((acc, d) => {
+          // یکتا کردن بر اساس نام
+          if (!acc.find(p => p.person_name === d.person_name)) {
+            const personDebts = debts.filter(x => x.person_name === d.person_name);
+            const debtorTotal = personDebts.filter(x => x.debt_type === 'debtor').reduce((s, x) => s + Number(x.amount), 0);
+            const creditorTotal = personDebts.filter(x => x.debt_type === 'creditor').reduce((s, x) => s + Number(x.amount), 0);
+            acc.push({
+              person_name: d.person_name,
+              person_phone: d.person_phone,
+              balance: debtorTotal - creditorTotal,
+            });
+          }
+          return acc;
+        }, [])
+        .slice(0, 8)
+    : [];
+  
+  // ═══ تراکنش‌های بدون سررسید ═══
+  const noDueTransactions = (() => {
+    let filtered = debts.filter(d => !d.due_date_shamsi);
+    
+    if (dueFilterType === 'debtor') {
+      filtered = filtered.filter(d => d.debt_type === 'debtor');
+    } else if (dueFilterType === 'creditor') {
+      filtered = filtered.filter(d => d.debt_type === 'creditor');
+    }
+    
+    if (dueSearch.length >= 2) {
+      const q = dueSearch.toLowerCase();
+      filtered = filtered.filter(d => 
+        d.person_name?.toLowerCase().includes(q) ||
+        d.person_phone?.includes(dueSearch) ||
+        d.person_national_id?.includes(dueSearch)
+      );
+    }
+    
+    return filtered;
+  })();
+  
+  // ═══ لیست تراکنش‌ها بر اساس سررسید ═══
+  const dueTransactions = (() => {
+    let filtered = [...debts];
+    
+    // فقط تراکنش‌هایی که سررسید دارن
+    filtered = filtered.filter(d => d.due_date_shamsi);
+    
+    // فیلتر نوع
+    if (dueFilterType === 'debtor') {
+      filtered = filtered.filter(d => d.debt_type === 'debtor');
+    } else if (dueFilterType === 'creditor') {
+      filtered = filtered.filter(d => d.debt_type === 'creditor');
+    }
+    
+    // جستجو
+    if (dueSearch.length >= 2) {
+      const q = dueSearch.toLowerCase();
+      filtered = filtered.filter(d => 
+        d.person_name?.toLowerCase().includes(q) ||
+        d.person_phone?.includes(dueSearch) ||
+        d.person_national_id?.includes(dueSearch)
+      );
+    }
+    
+    // مرتب‌سازی
+    filtered.sort((a, b) => {
+      const da = (a.due_date_shamsi || '').replace(/\//g, '');
+      const db = (b.due_date_shamsi || '').replace(/\//g, '');
+      return dueSort === 'asc' 
+        ? parseInt(da) - parseInt(db)
+        : parseInt(db) - parseInt(da);
+    });
+    
+    return filtered;
+  })();
+  
+  // ═══ گرفتن today ═══
+  const todayShamsi = (() => {
+    try {
+      const today = new Date();
+      const j = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
+      return `${j.jy}/${String(j.jm).padStart(2, '0')}/${String(j.jd).padStart(2, '0')}`;
+    } catch (e) { return ''; }
+  })();
+  
+  // ═══ گروه‌بندی هفتگی (جاری تا آخر سال) ═══
+  const weekGroups = (() => {
+    const groups = {};
+    
+    const today = new Date();
+    const todayJ = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
+    
+    dueTransactions.forEach(d => {
+      if (!d.due_date_shamsi) return;
+      if (d.due_date_shamsi < todayShamsi) return;
+      
+      const parts = d.due_date_shamsi.split('/').map(Number);
+      const diffDays = ((parts[0] - todayJ.jy) * 365) + ((parts[1] - todayJ.jm) * 30) + (parts[2] - todayJ.jd);
+      const weekIndex = Math.max(0, Math.floor(diffDays / 7));
+      const weekKey = `W${weekIndex}`;
+      
+      if (!groups[weekKey]) {
+        groups[weekKey] = {
+          key: weekKey,
+          weekIndex: weekIndex,
+          transactions: [],
+          from: d.due_date_shamsi,
+          to: d.due_date_shamsi,
+          debtorTotal: 0,
+          creditorTotal: 0,
+        };
+      }
+      
+      groups[weekKey].transactions.push(d);
+      if (d.due_date_shamsi < groups[weekKey].from) groups[weekKey].from = d.due_date_shamsi;
+      if (d.due_date_shamsi > groups[weekKey].to) groups[weekKey].to = d.due_date_shamsi;
+      
+      if (d.debt_type === 'debtor') {
+        groups[weekKey].debtorTotal += Number(d.amount);
+      } else {
+        groups[weekKey].creditorTotal += Number(d.amount);
+      }
+    });
+    
+    // نام‌گذاری: هفته جاری، هفته آینده، بعد هفته اول/دوم/سوم/چهارم ماه
+    const sorted = Object.values(groups).sort((a, b) => a.weekIndex - b.weekIndex);
+    
+    sorted.forEach((g, idx) => {
+      if (idx === 0) {
+        g.weekLabel = '📌 هفته جاری';
+      } else if (idx === 1) {
+        g.weekLabel = '📌 هفته آینده';
+      } else {
+        // محاسبه ماه و شماره هفته در ماه
+        const fromParts = g.from.split('/').map(Number);
+        const monthName = persianMonthNames[fromParts[1] - 1];
+        
+        // شماره هفته در ماه: هفته اول، دوم، سوم، چهارم، پنجم
+        const weekOfMonth = Math.ceil(fromParts[2] / 7);
+        const weekLabel = weekOfMonth === 1 ? 'اول' :
+                          weekOfMonth === 2 ? 'دوم' :
+                          weekOfMonth === 3 ? 'سوم' :
+                          weekOfMonth === 4 ? 'چهارم' : 'پنجم';
+        
+        g.weekLabel = `📌 هفته ${weekLabel} ${monthName}`;
+      }
+    });
+    
+    return sorted;
+  })();
+  
+  // ═══ گروه‌بندی ماهانه (جاری تا اسفند) ═══
+  const monthGroups = (() => {
+    const groups = {};
+    const today = new Date();
+    const todayJ = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
+    
+    dueTransactions.forEach(d => {
+      if (!d.due_date_shamsi) return;
+      if (d.due_date_shamsi < todayShamsi) return;
+      const parts = d.due_date_shamsi.split('/');
+      const jy = parseInt(parts[0]);
+      const jm = parseInt(parts[1]);
+      const monthKey = `${jy}/${String(jm).padStart(2, '0')}`;
+      
+      if (!groups[monthKey]) {
+        groups[monthKey] = {
+          key: monthKey,
+          year: jy,
+          month: jm,
+          monthDiff: (jy - todayJ.jy) * 12 + (jm - todayJ.jm),
+          transactions: [],
+          debtorTotal: 0,
+          creditorTotal: 0,
+        };
+      }
+      
+      groups[monthKey].transactions.push(d);
+      
+      if (d.debt_type === 'debtor') {
+        groups[monthKey].debtorTotal += Number(d.amount);
+      } else {
+        groups[monthKey].creditorTotal += Number(d.amount);
+      }
+    });
+    
+    // همیشه از ماه جاری به اسفند
+    const sorted = Object.values(groups).sort((a, b) => 
+      (a.year * 12 + a.month) - (b.year * 12 + b.month)
+    );
+    
+    sorted.forEach((g, idx) => {
+      if (idx === 0) {
+        g.monthLabel = '📌 ماه جاری';
+      } else {
+        g.monthLabel = `📌 ${persianMonthNames[g.month - 1]} ${g.year}`;
+      }
+    });
+    
+    return sorted;
+  })();
+  
+  // ═══ پیشنهادات جستجو ═══
+  const dueSuggestions = dueSearch.length >= 2
+    ? debts
+        .filter(d => 
+          d.person_name?.toLowerCase().includes(dueSearch.toLowerCase()) ||
+          d.person_phone?.includes(dueSearch)
+        )
+        .reduce((acc, d) => {
+          if (!acc.find(p => p.person_name === d.person_name)) {
+            acc.push({ person_name: d.person_name, person_phone: d.person_phone });
+          }
+          return acc;
+        }, [])
+        .slice(0, 6)
+    : [];
+  
+  const shopName = selectedShop === 'all'   
     ? 'همه فروشگاه‌ها' 
     : shops.find(s => String(s.id) === String(selectedShop))?.name || '';
   
@@ -625,7 +872,7 @@ export default function DebtsPage() {
             {[
               { id: 'date', label: '📅 تاریخ' },
               { id: 'persons', label: '👥 اشخاص' },
-              { id: 'overdue', label: '⏳ در انتظار پرداخت' },
+              { id: 'due', label: '⏰ زمان سررسید' },
             ].map(t => (
               <button key={t.id} onClick={() => setFilterTab(t.id)}
                 className={`text-[11px] px-3 py-1.5 rounded-lg whitespace-nowrap ${filterTab === t.id ? 'bg-fuchsia-500 text-white font-bold' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
@@ -653,9 +900,60 @@ export default function DebtsPage() {
           {filterTab === 'persons' && (
             <div>
               <div className="relative mb-2">
-                <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input value={searchPerson} onChange={e => setSearchPerson(e.target.value)} placeholder="جستجوی نام..."
-                  className="w-full pr-9 pl-3 py-2 border rounded-lg text-xs" />
+                <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
+                <input 
+                  value={searchPerson} 
+                  onChange={e => {
+                    setSearchPerson(e.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                  placeholder="جستجو: نام، موبایل، کد ملی..." 
+                  className="w-full pr-9 pl-3 py-2 border rounded-lg text-xs" 
+                />
+                
+                {/* ═══ لیست پیشنهادات ═══ */}
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl border shadow-lg z-20 max-h-60 overflow-y-auto">
+                    {suggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setSearchPerson(s.person_name);
+                          setShowSuggestions(false);
+                        }}
+                        className="w-full flex items-center justify-between p-2 hover:bg-fuchsia-50 border-b last:border-0 text-right"
+                      >
+                        <div className="flex-1">
+                          <p className="text-xs font-bold text-gray-700">
+                            👤 {s.person_name}
+                          </p>
+                          <p className="text-[10px] text-gray-400">
+                            📱 {s.person_phone}
+                          </p>
+                        </div>
+                        <div className="text-left">
+                          <p className={`text-xs font-extrabold ${s.balance >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                            {Number(Math.abs(s.balance)).toLocaleString('fa-IR')}
+                          </p>
+                          <p className="text-[9px] text-gray-400">
+                            {s.balance >= 0 ? 'بدهکار' : 'بستانکار'}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                {/* پیام «چیزی پیدا نشد» */}
+                {showSuggestions && searchPerson.length >= 2 && suggestions.length === 0 && (
+                  <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl border shadow-lg z-20 p-3 text-center">
+                    <p className="text-xs text-gray-400">چیزی پیدا نشد</p>
+                  </div>
+                )}
               </div>
               <div className="flex gap-1 mb-2">
                 {[
@@ -668,6 +966,78 @@ export default function DebtsPage() {
                     {t.label}
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+          
+          {/* ═══════════════════════════════════════════════
+              تب زمان سررسید
+          ═══════════════════════════════════════════════ */}
+          {filterTab === 'due' && (
+            <div>
+              {/* جستجوی هوشمند */}
+              <div className="relative mb-3">
+                <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
+                <input 
+                  value={dueSearch} 
+                  onChange={e => {
+                    setDueSearch(e.target.value);
+                    setShowDueSuggestions(true);
+                  }}
+                  onFocus={() => setShowDueSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowDueSuggestions(false), 200)}
+                  placeholder="جستجو: نام، موبایل، کد ملی..." 
+                  className="w-full pr-9 pl-3 py-2 border rounded-lg text-xs" 
+                />
+                
+                {showDueSuggestions && dueSuggestions.length > 0 && (
+                  <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl border shadow-lg z-20 max-h-60 overflow-y-auto">
+                    {dueSuggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setDueSearch(s.person_name);
+                          setShowDueSuggestions(false);
+                        }}
+                        className="w-full flex items-center p-2 hover:bg-fuchsia-50 border-b last:border-0 text-right"
+                      >
+                        <div className="flex-1">
+                          <p className="text-xs font-bold text-gray-700">👤 {s.person_name}</p>
+                          <p className="text-[10px] text-gray-400">📱 {s.person_phone}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {/* فیلتر نوع + سوییچ هفته/ماه */}
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex gap-1">
+                  {[
+                    { id: 'all', label: 'همه' },
+                    { id: 'debtor', label: '🔴 بدهکاران' },
+                    { id: 'creditor', label: '🔵 بستانکاران' },
+                  ].map(t => (
+                    <button key={t.id} onClick={() => setDueFilterType(t.id)}
+                      className={`text-[10px] px-3 py-1.5 rounded-lg transition-all ${dueFilterType === t.id ? 'bg-fuchsia-500 text-white font-bold shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                  <button onClick={() => setDueView('week')}
+                    className={`text-[10px] px-3 py-1 rounded-md transition-all ${dueView === 'week' ? 'bg-white text-fuchsia-600 font-bold shadow-sm' : 'text-gray-500'}`}>
+                    📅 هفته
+                  </button>
+                  <button onClick={() => setDueView('month')}
+                    className={`text-[10px] px-3 py-1 rounded-md transition-all ${dueView === 'month' ? 'bg-white text-fuchsia-600 font-bold shadow-sm' : 'text-gray-500'}`}>
+                    📆 ماه
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -948,18 +1318,326 @@ export default function DebtsPage() {
           <div className="text-center py-8 text-gray-400 text-xs">در حال بارگذاری...</div>
         ) : debts.length === 0 ? (
           <div className="text-center py-10 text-gray-400 text-xs">موردی یافت نشد</div>
+        ) : filterTab === 'due' ? (
+          // ═══ نمای زمان سررسید ═══
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
+            {/* سررسید گذشته */}
+            {(() => {
+              const today = new Date();
+              const j = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
+              const todayStr = `${j.jy}/${String(j.jm).padStart(2, '0')}/${String(j.jd).padStart(2, '0')}`;
+              
+              const overdue = dueTransactions.filter(d => d.due_date_shamsi < todayStr);
+              
+              if (overdue.length === 0) return null;
+              
+              return (
+                <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-2xl border-2 border-red-200 shadow-md overflow-hidden">
+                  <div className="bg-gradient-to-l from-red-500 to-red-600 p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl animate-pulse">🔴</span>
+                      <h3 className="font-bold text-white text-sm">سررسید گذشته</h3>
+                    </div>
+                    <span className="text-[11px] bg-white/20 text-white px-2 py-1 rounded-lg font-bold">
+                      {overdue.length} تراکنش
+                    </span>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    {overdue.map((d, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleEdit(d)}
+                        className="w-full bg-white rounded-xl p-2.5 hover:shadow-md transition-all text-right border border-red-100"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-xs font-bold ${d.debt_type === 'debtor' ? 'text-red-600' : 'text-blue-600'}`}>
+                            {d.debt_type === 'debtor' ? '🔴' : '🔵'} {d.person_name}
+                            <span className="text-[10px] text-gray-400 mr-2">{d.person_phone}</span>
+                          </span>
+                          <span className={`text-xs font-extrabold ${d.debt_type === 'debtor' ? 'text-red-600' : 'text-blue-600'}`}>
+                            {Number(d.amount).toLocaleString('fa-IR')}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-red-500 animate-pulse font-bold">
+                            ⏰ {d.due_date_shamsi}
+                          </span>
+                          {d.notes && <span className="text-gray-400 truncate">📝 {d.notes}</span>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="bg-red-50 border-t border-red-200 p-2 flex items-center justify-between text-[11px]">
+                    <span className="text-red-700 font-bold">جمع:</span>
+                    <div className="flex gap-3">
+                      <span className="text-red-600 font-extrabold">
+                        🔴 {Number(overdue.filter(d => d.debt_type === 'debtor').reduce((s, d) => s + Number(d.amount), 0)).toLocaleString('fa-IR')}
+                      </span>
+                      {overdue.filter(d => d.debt_type === 'creditor').length > 0 && (
+                        <span className="text-blue-600 font-extrabold">
+                          🔵 {Number(overdue.filter(d => d.debt_type === 'creditor').reduce((s, d) => s + Number(d.amount), 0)).toLocaleString('fa-IR')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* گروه بدون سررسید */}
+            {noDueTransactions.length > 0 && (
+              <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+                <div className="bg-gradient-to-l from-gray-500 to-gray-600 p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📋</span>
+                    <h3 className="font-bold text-white text-xs">بدون سررسید</h3>
+                  </div>
+                  <span className="text-[10px] bg-white/20 text-white px-2 py-1 rounded-lg font-bold">
+                    {noDueTransactions.length} تراکنش
+                  </span>
+                </div>
+                <div className="p-3 space-y-2">
+                  {noDueTransactions.map((d, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleEdit(d)}
+                      className="w-full bg-gray-50 hover:bg-gray-100 rounded-xl p-2.5 transition-all text-right"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`text-xs font-bold ${d.debt_type === 'debtor' ? 'text-red-600' : 'text-blue-600'}`}>
+                          {d.debt_type === 'debtor' ? '🔴' : '🔵'} {d.person_name}
+                          <span className="text-[10px] text-gray-400 mr-2">{d.person_phone}</span>
+                        </span>
+                        <span className={`text-xs font-extrabold ${d.debt_type === 'debtor' ? 'text-red-600' : 'text-blue-600'}`}>
+                          {Number(d.amount).toLocaleString('fa-IR')}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-gray-500">📅 {d.transaction_date_shamsi || d.transaction_date}</span>
+                        {d.notes && <span className="text-gray-400 truncate">📝 {d.notes}</span>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <div className="bg-gray-50 border-t p-2 flex items-center justify-between text-[11px]">
+                  <span className="text-gray-700 font-bold">جمع:</span>
+                  <div className="flex gap-3">
+                    {noDueTransactions.filter(d => d.debt_type === 'debtor').length > 0 && (
+                      <span className="text-red-600 font-extrabold">
+                        🔴 {Number(noDueTransactions.filter(d => d.debt_type === 'debtor').reduce((s, d) => s + Number(d.amount), 0)).toLocaleString('fa-IR')}
+                      </span>
+                    )}
+                    {noDueTransactions.filter(d => d.debt_type === 'creditor').length > 0 && (
+                      <span className="text-blue-600 font-extrabold">
+                        🔵 {Number(noDueTransactions.filter(d => d.debt_type === 'creditor').reduce((s, d) => s + Number(d.amount), 0)).toLocaleString('fa-IR')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* گروه‌بندی هفته/ماه */}
+            {dueView === 'week' ? (
+              weekGroups.map((group, gi) => {
+                // روزهای هفته (شنبه تا جمعه)
+                const startDate = group.from.split('/').map(Number);
+                const weekDays = [];
+                for (let i = 0; i < 7; i++) {
+                  let d = startDate[2] + i;
+                  let m = startDate[1];
+                  let y = startDate[0];
+                  // اگه از ۳۱ رد شد (تقریبی)
+                  if (d > 31) { d -= 31; m += 1; }
+                  if (m > 12) { m -= 12; y += 1; }
+                  weekDays.push({ day: d, month: m, year: y, dateStr: `${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}` });
+                }
+                
+                // تراکنش‌های هر روز
+                const txByDay = {};
+                group.transactions.forEach(t => {
+                  if (!txByDay[t.due_date_shamsi]) txByDay[t.due_date_shamsi] = [];
+                  txByDay[t.due_date_shamsi].push(t);
+                });
+                
+                return (
+                <div key={gi} className="bg-white rounded-2xl border border-fuchsia-100 shadow-sm overflow-hidden">
+                  {/* هدر */}
+                  <div className="bg-gradient-to-l from-fuchsia-500 to-fuchsia-600 px-3 py-2">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm">📅</span>
+                        <h3 className="font-bold text-white text-[11px]">
+                          {group.weekLabel}
+                        </h3>
+
+                      </div>
+                      <span className="text-[9px] bg-white/20 text-white px-1.5 py-0.5 rounded-md font-bold">
+                        {group.transactions.length}
+                      </span>
+                    </div>
+                    {/* تقویم جمع و جور */}
+                    <div className="grid grid-cols-7 gap-0.5 text-center">
+                      {['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'].map((d, i) => (
+                        <div key={i} className="text-[8px] text-white/60 font-bold">{d}</div>
+                      ))}
+                      {weekDays.map((wd, i) => {
+                        const hasTx = txByDay[wd.dateStr]?.length > 0;
+                        return (
+                          <div key={i} className={`relative text-[9px] py-0.5 rounded ${
+                            hasTx ? 'bg-white text-fuchsia-700 font-bold shadow-sm' : 'text-white/70'
+                          }`}>
+                            {wd.day}
+                            {hasTx && (
+                              <span className="absolute top-0 right-0 w-1 h-1 bg-red-500 rounded-full"></span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  
+                  {/* لیست تراکنش‌ها */}
+                  <div className="divide-y divide-gray-50">
+                    {group.transactions.map((d, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleEdit(d)}
+                        className="w-full hover:bg-fuchsia-50/50 px-2 py-1.5 transition-all text-right"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-[10px] font-bold truncate ${d.debt_type === 'debtor' ? 'text-red-600' : 'text-blue-600'}`}>
+                            {d.debt_type === 'debtor' ? '🔴' : '🔵'} {d.person_name}
+                          </span>
+                          <span className={`text-[10px] font-extrabold whitespace-nowrap ${d.debt_type === 'debtor' ? 'text-red-600' : 'text-blue-600'}`}>
+                            {Number(d.amount).toLocaleString('fa-IR')}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[9px] text-gray-400 mt-0.5">
+                          <span>⏰ {d.due_date_shamsi}</span>
+                          {d.notes && <span className="truncate max-w-[120px]">📝 {d.notes}</span>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* جمع */}
+                  <div className="bg-fuchsia-50/50 border-t border-fuchsia-100 px-2 py-1.5 flex items-center justify-between text-[10px]">
+                    <span className="text-fuchsia-700 font-bold">جمع:</span>
+                    <div className="flex gap-2">
+                      {group.debtorTotal > 0 && (
+                        <span className="text-red-600 font-extrabold">
+                          🔴 {Number(group.debtorTotal).toLocaleString('fa-IR')}
+                        </span>
+                      )}
+                      {group.creditorTotal > 0 && (
+                        <span className="text-blue-600 font-extrabold">
+                          🔵 {Number(group.creditorTotal).toLocaleString('fa-IR')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                );
+              })
+            ) : (
+              monthGroups.map((group, gi) => (
+                <div key={gi} className="bg-white rounded-2xl border border-indigo-100 shadow-sm overflow-hidden">
+                  {/* هدر */}
+                  <div className="bg-gradient-to-l from-indigo-500 to-indigo-600 px-3 py-2 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm">📆</span>
+                      <h3 className="font-bold text-white text-[11px]">
+                        {group.monthLabel}
+                      </h3>
+                    </div>
+                    <span className="text-[9px] bg-white/20 text-white px-1.5 py-0.5 rounded-md font-bold">
+                      {group.transactions.length}
+                    </span>
+                  </div>
+                  
+                  {/* لیست تراکنش‌ها */}
+                  <div className="divide-y divide-gray-50">
+                    {group.transactions.map((d, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleEdit(d)}
+                        className="w-full hover:bg-indigo-50/50 px-2 py-1.5 transition-all text-right"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-[10px] font-bold truncate ${d.debt_type === 'debtor' ? 'text-red-600' : 'text-blue-600'}`}>
+                            {d.debt_type === 'debtor' ? '🔴' : '🔵'} {d.person_name}
+                          </span>
+                          <span className={`text-[10px] font-extrabold whitespace-nowrap ${d.debt_type === 'debtor' ? 'text-red-600' : 'text-blue-600'}`}>
+                            {Number(d.amount).toLocaleString('fa-IR')}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[9px] text-gray-400 mt-0.5">
+                          <span>⏰ {d.due_date_shamsi}</span>
+                          {d.notes && <span className="truncate max-w-[120px]">📝 {d.notes}</span>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* جمع */}
+                  <div className="bg-indigo-50/50 border-t border-indigo-100 px-2 py-1.5 flex items-center justify-between text-[10px]">
+                    <span className="text-indigo-700 font-bold">جمع:</span>
+                    <div className="flex gap-2">
+                      {group.debtorTotal > 0 && (
+                        <span className="text-red-600 font-extrabold">
+                          🔴 {Number(group.debtorTotal).toLocaleString('fa-IR')}
+                        </span>
+                      )}
+                      {group.creditorTotal > 0 && (
+                        <span className="text-blue-600 font-extrabold">
+                          🔵 {Number(group.creditorTotal).toLocaleString('fa-IR')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+            
+            {dueTransactions.length === 0 && noDueTransactions.length === 0 && (
+              <div className="text-center py-10 text-gray-400 text-xs bg-white rounded-2xl border">
+                <span className="text-3xl block mb-2">📭</span>
+                تراکنشی یافت نشد
+              </div>
+            )}
+          </div>
         ) : (
           <div className="space-y-2">
             {Object.values(debts.reduce((acc, d) => {
               const key = d.person_name;
               if (!acc[key]) {
-                acc[key] = { name: key, phone: d.person_phone, items: [], debtor: 0, creditor: 0 };
+                acc[key] = { name: key, phone: d.person_phone, items: [], debtor: 0, creditor: 0, earliestDue: null };
               }
               acc[key].items.push(d);
               if (d.debt_type === 'debtor') acc[key].debtor += Number(d.amount);
               else acc[key].creditor += Number(d.amount);
+              
+              // نزدیک‌ترین سررسید
+              if (d.due_date_shamsi) {
+                const dueNum = parseInt(d.due_date_shamsi.replace(/\//g, ''));
+                if (!acc[key].earliestDue || dueNum < parseInt(acc[key].earliestDue.replace(/\//g, ''))) {
+                  acc[key].earliestDue = d.due_date_shamsi;
+                }
+              }
               return acc;
-            }, {})).map((person, idx) => {
+            }, {}))
+            .sort((a, b) => {
+              // مرتب‌سازی بر اساس سررسید
+              if (a.earliestDue && !b.earliestDue) return -1;
+              if (!a.earliestDue && b.earliestDue) return 1;
+              if (a.earliestDue && b.earliestDue) {
+                return parseInt(a.earliestDue.replace(/\//g, '')) - parseInt(b.earliestDue.replace(/\//g, ''));
+              }
+              // اگه هیچ‌کدوم سررسید نداشتن، بر اساس نام
+              return a.name.localeCompare(b.name, 'fa');
+            })
+            .map((person, idx) => {
               const balance = person.debtor - person.creditor;
               return (
                 <div key={idx} className="bg-white rounded-xl border shadow-sm p-3">
@@ -969,6 +1647,7 @@ export default function DebtsPage() {
                         👤 {person.name}
                         <span className="text-[10px] text-gray-400 mr-2">{person.phone}</span>
                       </span>
+
                     </button>
                     <div className="text-left">
                       <span className={`text-xs font-extrabold ${balance >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
@@ -1085,7 +1764,9 @@ export default function DebtsPage() {
                 </tbody>
                 <tfoot className="bg-gray-100 font-bold sticky bottom-0">
                   <tr>
-                    <td colSpan="2" className="p-2 text-left">مانده حساب:</td>
+                    <td colSpan="2" className="p-2 text-left">
+                      مانده حساب {personDebts.length} ردیف:
+                    </td>
                     <td colSpan="5" className="p-2 text-center">
                       {(() => {
                         const debtorTotal = personDebts.filter(d => d.debt_type === 'debtor').reduce((s, d) => s + Number(d.amount), 0);
@@ -1113,21 +1794,58 @@ export default function DebtsPage() {
       {/* مودال تقویم شمسی */}
       {showDatePicker && (
         <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-3" onClick={() => setShowDatePicker(false)}>
-          <div className="bg-white rounded-2xl p-4 w-72" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <button onClick={() => { if (pickerMonth === 1) { setPickerMonth(12); setPickerYear(pickerYear - 1); } else setPickerMonth(pickerMonth - 1); }} className="text-gray-500">◀</button>
-              <span className="text-xs font-bold">{persianMonthNames[pickerMonth - 1]} {pickerYear}</span>
-              <button onClick={() => { if (pickerMonth === 12) { setPickerMonth(1); setPickerYear(pickerYear + 1); } else setPickerMonth(pickerMonth + 1); }} className="text-gray-500">▶</button>
+          <div className="bg-white rounded-2xl border border-fuchsia-100 shadow-xl p-3 w-72" onClick={e => e.stopPropagation()}>
+            {/* هدر: سال و ماه */}
+            <div className="flex items-center justify-between mb-3 bg-gradient-to-l from-fuchsia-500 to-fuchsia-600 rounded-xl p-2">
+              <button type="button" onClick={() => { if (pickerMonth === 1) { setPickerMonth(12); setPickerYear(pickerYear - 1); } else setPickerMonth(pickerMonth - 1); }}
+                className="w-7 h-7 text-white hover:bg-white/20 rounded-lg flex items-center justify-center text-lg">‹</button>
+              <div className="flex gap-1">
+                <select value={pickerMonth} onChange={e => setPickerMonth(Number(e.target.value))}
+                  className="px-1.5 py-0.5 rounded-lg text-xs bg-white/90 font-bold text-fuchsia-700 cursor-pointer">
+                  {persianMonthNames.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+                <select value={pickerYear} onChange={e => setPickerYear(Number(e.target.value))}
+                  className="px-1.5 py-0.5 rounded-lg text-xs bg-white/90 font-bold text-fuchsia-700 cursor-pointer">
+                  {[...Array(20)].map((_, i) => <option key={i} value={1400 + i}>{1400 + i}</option>)}
+                </select>
+              </div>
+              <button type="button" onClick={() => { if (pickerMonth === 12) { setPickerMonth(1); setPickerYear(pickerYear + 1); } else setPickerMonth(pickerMonth + 1); }}
+                className="w-7 h-7 text-white hover:bg-white/20 rounded-lg flex items-center justify-center text-lg">›</button>
             </div>
-            <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-gray-400 mb-2">
-              {['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'].map(d => <span key={d}>{d}</span>)}
+
+            {/* روزهای هفته */}
+            <div className="grid grid-cols-7 gap-0.5 mb-1 text-center text-[10px] text-fuchsia-600 font-bold">
+              <div>ش</div><div>ی</div><div>د</div><div>س</div><div>چ</div><div>پ</div><div>ج</div>
             </div>
-            <div className="grid grid-cols-7 gap-1">
-              {Array.from({ length: getDaysInMonth(pickerYear, pickerMonth) }, (_, i) => i + 1).map(day => (
-                <button key={day} onClick={() => selectDay(day)} className="text-[11px] py-1.5 rounded hover:bg-fuchsia-100">
-                  {day}
-                </button>
-              ))}
+
+            {/* روزها */}
+            <div className="grid grid-cols-7 gap-0.5">
+              {[...Array(getDaysInMonth(pickerYear, pickerMonth))].map((_, i) => {
+                const day = i + 1;
+                const dateStr = `${pickerYear}/${String(pickerMonth).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
+                const isSelected = 
+                  (pickerTarget === 'transaction' && transactionDate === dateStr) ||
+                  (pickerTarget === 'due' && dueDate === dateStr) ||
+                  (pickerTarget === 'filter_from' && dateFrom === dateStr) ||
+                  (pickerTarget === 'filter_to' && dateTo === dateStr);
+                const isToday = (() => {
+                  try {
+                    const today = new Date();
+                    const { jy, jm, jd } = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
+                    return jy === pickerYear && jm === pickerMonth && jd === day;
+                  } catch (e) { return false; }
+                })();
+                return (
+                  <button key={i} type="button" onClick={() => selectDay(day)}
+                    className={`w-7 h-7 rounded-lg text-xs flex items-center justify-center transition-all ${
+                      isSelected ? 'bg-fuchsia-600 text-white font-bold' : 
+                      isToday ? 'bg-fuchsia-100 text-fuchsia-700 font-bold' : 
+                      'hover:bg-fuchsia-50 text-gray-700'
+                    }`}>
+                    {day}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
