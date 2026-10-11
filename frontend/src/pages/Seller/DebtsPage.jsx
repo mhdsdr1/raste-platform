@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, X, Search, Trash2, Edit2, Wallet, Users } from 'lucide-react';
+import { Plus, X, Search, Trash2, Edit2, Wallet, Users, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../services/api';
 import * as jalaali from 'jalaali-js';
+import JalaliCalendar, { todayShamsi as getTodayShamsi, persianToNumber as pToNum } from '../../components/JalaliCalendar';
 
 const PRESET_DEBTS = [
   { title: 'فروش نسیه', icon: '💰', debt_type: 'debtor' },
@@ -37,6 +38,7 @@ export default function DebtsPage() {
   const [personAddress, setPersonAddress] = useState('');
   const [personPostalCode, setPersonPostalCode] = useState('');
   const [bankName, setBankName] = useState('');
+  const [formShop, setFormShop] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [shebaNumber, setShebaNumber] = useState('');
   const [amount, setAmount] = useState('');
@@ -52,7 +54,25 @@ export default function DebtsPage() {
   const [dueFilterType, setDueFilterType] = useState('all');
   const [dueSearch, setDueSearch] = useState('');
   const [dueSort, setDueSort] = useState('desc');
-  const [dueView, setDueView] = useState('week');  // week | month
+  const [dueView, setDueView] = useState('week');
+  const [showSettleFull, setShowSettleFull] = useState(false);
+  const [showSettlePartial, setShowSettlePartial] = useState(false);
+  const [settleAmount, setSettleAmount] = useState('');
+  const [settleAmountDisplay, setSettleAmountDisplay] = useState('');
+  const [settleDate, setSettleDate] = useState('');
+  const [settleMethod, setSettleMethod] = useState('cash');
+  const [settleNotes, setSettleNotes] = useState('');
+  const [showSettleDatePicker, setShowSettleDatePicker] = useState(false);
+  const [settlePayments, setSettlePayments] = useState([]);
+  const [txSettleTarget, setTxSettleTarget] = useState(null);
+  const [showSettleHistory, setShowSettleHistory] = useState(false);
+  const [showSettleForm, setShowSettleForm] = useState(false);
+  const [editingPayment, setEditingPayment] = useState(null);
+  const [selectedTxIds, setSelectedTxIds] = useState([]);
+  const [showGroupSettle, setShowGroupSettle] = useState(false);
+  const [groupSettleDate, setGroupSettleDate] = useState('');
+  const [groupSettleNotes, setGroupSettleNotes] = useState('');
+  const [showGroupDatePicker, setShowGroupDatePicker] = useState(false);
   const [showDueSuggestions, setShowDueSuggestions] = useState(false);
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [personDebts, setPersonDebts] = useState([]);
@@ -72,6 +92,16 @@ export default function DebtsPage() {
   const [pickerMonth, setPickerMonth] = useState(1);
   
   const getDaysInMonth = (jy, jm) => jalaali.jalaaliMonthLength(jy, jm);
+  
+  // ═══ محاسبه روز هفته اولین روز ماه (۰=شنبه، ...، ۶=جمعه) ═══
+  const getFirstDayOfWeek = (jy, jm) => {
+    try {
+      const g = jalaali.toGregorian(jy, jm, 1);
+      const date = new Date(g.gy, g.gm - 1, g.gd);
+      const jsDay = date.getDay(); // 0=Sunday ... 6=Saturday
+      return (jsDay + 1) % 7;
+    } catch (e) { return 0; }
+  };
   
   const persianToNumber = (persianDate) => {
     if (!persianDate) return 0;
@@ -114,6 +144,10 @@ export default function DebtsPage() {
         return;
       }
       setDateTo(dateStr);
+    } else if (pickerTarget === 'settle_date') {
+      setSettleDate(dateStr);
+    } else if (pickerTarget === 'group_settle_date') {
+      setGroupSettleDate(dateStr);
     }
     setShowDatePicker(false);
   };
@@ -274,6 +308,7 @@ export default function DebtsPage() {
     setPersonName(''); setPersonPhone(''); setPersonNationalId('');
     setPersonAddress(''); setPersonPostalCode('');
     setBankName(''); setCardNumber(''); setShebaNumber('');
+    setFormShop(selectedShop !== 'all' ? selectedShop : '');
     setAmount(''); setAmountDisplay('');
     setTransactionDate(todayPersian()); setDueDate('');
     setPaymentType('credit'); setNotes('');
@@ -480,7 +515,13 @@ export default function DebtsPage() {
         payment_type: paymentType,
         notes,
       };
-      if (selectedShop && selectedShop !== 'all') payload.shop = selectedShop;
+      // فروشگاه: اول از formShop، بعد از selectedShop
+      const finalShop = formShop || (selectedShop !== 'all' ? selectedShop : '');
+      if (!finalShop) {
+        toast.error('لطفاً فروشگاه را انتخاب کنید');
+        return;
+      }
+      payload.shop = finalShop;
       
       if (editingId) {
         await api.patch(`/shops/debts/${editingId}/`, payload);
@@ -544,6 +585,7 @@ export default function DebtsPage() {
     setPersonAddress(debt.person_address || '');
     setPersonPostalCode(debt.person_postal_code || '');
     setBankName(debt.bank_name || '');
+    setFormShop(debt.shop || (selectedShop !== 'all' ? selectedShop : ''));
     setCardNumber(debt.card_number || '');
     setShebaNumber(debt.sheba_number || '');
     setAmount(debt.amount);
@@ -820,6 +862,140 @@ export default function DebtsPage() {
         .slice(0, 6)
     : [];
   
+  // ═══ توابع تسویه ═══
+  const handleSettleAmountChange = (e) => {
+    const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
+    const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
+    let raw = e.target.value
+      .replace(/[۰-۹]/g, d => persianDigits.indexOf(d))
+      .replace(/[٠-٩]/g, d => arabicDigits.indexOf(d))
+      .replace(/[^0-9]/g, '');
+    
+    setSettleAmount(raw);
+    setSettleAmountDisplay(raw ? Number(raw).toLocaleString('en-US') : '');
+  };
+  
+  
+  const handleSettlePartial = async () => {
+    const debt = txSettleTarget;
+    if (!debt) {
+      toast.error('تراکنش هدف یافت نشد');
+      return;
+    }
+    
+    if (!settleAmount || Number(settleAmount) <= 0) {
+      toast.error('مبلغ را وارد کنید');
+      return;
+    }
+    if (!settleDate) {
+      toast.error('تاریخ را انتخاب کنید');
+      return;
+    }
+    
+    const txRemaining = Number(debt.tx_remaining ?? debt.amount);
+    if (Number(settleAmount) > txRemaining) {
+      toast.error('مبلغ بیشتر از مانده تراکنش (' + txRemaining.toLocaleString('fa-IR') + ') است');
+      return;
+    }
+    
+    try {
+      // ثبت DebtPayment (بدون ساخت SellerDebt معکوس)
+      await api.post('/shops/debts/' + debt.id + '/payments/create/', {
+        amount: settleAmount,
+        payment_date: settleDate,
+        payment_method: settleMethod,
+        notes: settleNotes,
+      });
+      
+      toast.success('تسویه ثبت شد');
+      setShowSettlePartial(false);
+      
+      // آپدیت txSettleTarget با دیتای تازه (مودال سوابق باز بمونه)
+      const params = new URLSearchParams();
+      if (selectedShop !== 'all') params.append('shop_id', selectedShop);
+      const res = await api.get('/shops/debts/?' + params.toString());
+      setDebts(res.data.debts || []);
+      setSummary(res.data.summary || {});
+      
+      // پیدا کردن تراکنش آپدیت‌شده
+      const updatedDebt = res.data.debts?.find(x => x.id === debt.id);
+      if (updatedDebt) {
+        setTxSettleTarget(updatedDebt);
+        // باز کردن مودال سوابق
+        setShowSettleHistory(true);
+      }
+      
+      // ریست فرم
+      setSettleAmount('');
+      setSettleAmountDisplay('');
+      setSettleDate(getTodayShamsi());
+      setSettleMethod('cash');
+      setSettleNotes('');
+    } catch (e) {
+      console.error(e);
+      toast.error(e?.response?.data?.error || 'خطا در ثبت تسویه');
+    }
+  };
+  
+  // ═══ تسویه گروهی ═══
+  const handleGroupSettle = async () => {
+    if (selectedTxIds.length === 0) {
+      toast.error('هیچ تراکنشی انتخاب نشده');
+      return;
+    }
+    if (!groupSettleDate) {
+      toast.error('تاریخ را انتخاب کنید');
+      return;
+    }
+    
+    try {
+      let successCount = 0;
+      let totalSettled = 0;
+      
+      for (const txId of selectedTxIds) {
+        const debt = personDebts.find(d => d.id === txId);
+        if (!debt) continue;
+        
+        const rem = Number(debt.tx_remaining ?? debt.amount);
+        if (rem <= 0.01) continue;
+        
+        try {
+          await api.post(`/shops/debts/${txId}/payments/create/`, {
+            amount: rem,
+            payment_date: groupSettleDate,
+            payment_method: 'cash',
+            notes: groupSettleNotes || 'تسویه گروهی',
+          });
+          successCount++;
+          totalSettled += rem;
+        } catch (e) {
+          console.error('خطا در تسویه', txId, e);
+        }
+      }
+      
+      toast.success(`${successCount} تراکنش تسویه شد`);
+      setShowGroupSettle(false);
+      setSelectedTxIds([]);
+      setGroupSettleNotes('تسویه گروهی');
+      
+      // رفرش
+      const params = new URLSearchParams();
+      if (selectedShop !== 'all') params.append('shop_id', selectedShop);
+      const res = await api.get(`/shops/debts/?${params.toString()}`);
+      setDebts(res.data.debts || []);
+      setSummary(res.data.summary || {});
+      
+      // آپدیت personDebts
+      if (selectedPerson) {
+        const refreshed = res.data.debts?.filter(x => x.person_name === selectedPerson.person_name) || [];
+        setPersonDebts(sortPersonDebts(refreshed, 'asc', 'date'));
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error('خطا در تسویه گروهی');
+    }
+  };
+  
   const shopName = selectedShop === 'all'   
     ? 'همه فروشگاه‌ها' 
     : shops.find(s => String(s.id) === String(selectedShop))?.name || '';
@@ -1090,6 +1266,23 @@ export default function DebtsPage() {
                 🔵 بستانکار
               </button>
             </div>
+            
+            {/* انتخابگر فروشگاه */}
+            {selectedShop === 'all' && shops.length > 1 && (
+              <div className="mb-3">
+                <label className="text-[9px] text-gray-400 mb-0.5 block">🏪 فروشگاه <span className="text-red-500">*</span></label>
+                <select 
+                  value={formShop} 
+                  onChange={e => setFormShop(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-xs bg-white"
+                >
+                  <option value="">انتخاب فروشگاه...</option>
+                  {shops.map(s => (
+                    <option key={s.id} value={s.id}>🏪 {s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             
             {/* اطلاعات شخص */}
             <div className="grid grid-cols-2 gap-2 mb-3">
@@ -1440,18 +1633,49 @@ export default function DebtsPage() {
             {/* گروه‌بندی هفته/ماه */}
             {dueView === 'week' ? (
               weekGroups.map((group, gi) => {
-                // روزهای هفته (شنبه تا جمعه)
-                const startDate = group.from.split('/').map(Number);
-                const weekDays = [];
-                for (let i = 0; i < 7; i++) {
-                  let d = startDate[2] + i;
-                  let m = startDate[1];
-                  let y = startDate[0];
-                  // اگه از ۳۱ رد شد (تقریبی)
-                  if (d > 31) { d -= 31; m += 1; }
-                  if (m > 12) { m -= 12; y += 1; }
-                  weekDays.push({ day: d, month: m, year: y, dateStr: `${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}` });
-                }
+                // ═══ محاسبه روزهای هفته (شنبه تا جمعه) با تقویم درست ═══
+                const weekDays = (() => {
+                  const fromParts = group.from.split('/').map(Number);
+                  const fromY = fromParts[0];
+                  const fromM = fromParts[1];
+                  const fromD = fromParts[2];
+                  
+                  // پیدا کردن شنبه‌ی هفته (روز هفته‌ی from)
+                  const gFrom = jalaali.toGregorian(fromY, fromM, fromD);
+                  const dateFrom = new Date(gFrom.gy, gFrom.gm - 1, gFrom.gd);
+                  const jsDay = dateFrom.getDay();
+                  const dayOfWeek = (jsDay + 1) % 7; // شنبه=0
+                  
+                  // تاریخ شنبه = from - dayOfWeek
+                  let startD = fromD - dayOfWeek;
+                  let startM = fromM;
+                  let startY = fromY;
+                  
+                  while (startD < 1) {
+                    startM -= 1;
+                    if (startM < 1) { startM = 12; startY -= 1; }
+                    startD += jalaali.jalaaliMonthLength(startY, startM);
+                  }
+                  
+                  // تولید ۷ روز
+                  const days = [];
+                  let curD = startD, curM = startM, curY = startY;
+                  for (let i = 0; i < 7; i++) {
+                    days.push({
+                      day: curD,
+                      month: curM,
+                      year: curY,
+                      dateStr: `${curY}/${String(curM).padStart(2, '0')}/${String(curD).padStart(2, '0')}`,
+                    });
+                    curD += 1;
+                    if (curD > jalaali.jalaaliMonthLength(curY, curM)) {
+                      curD = 1;
+                      curM += 1;
+                      if (curM > 12) { curM = 1; curY += 1; }
+                    }
+                  }
+                  return days;
+                })();
                 
                 // تراکنش‌های هر روز
                 const txByDay = {};
@@ -1615,8 +1839,10 @@ export default function DebtsPage() {
                 acc[key] = { name: key, phone: d.person_phone, items: [], debtor: 0, creditor: 0, earliestDue: null };
               }
               acc[key].items.push(d);
-              if (d.debt_type === 'debtor') acc[key].debtor += Number(d.amount);
-              else acc[key].creditor += Number(d.amount);
+              // ✅ استفاده از tx_remaining (مانده واقعی تراکنش)
+              const rem = Number(d.tx_remaining ?? d.amount);
+              if (d.debt_type === 'debtor') acc[key].debtor += rem;
+              else acc[key].creditor += rem;
               
               // نزدیک‌ترین سررسید
               if (d.due_date_shamsi) {
@@ -1670,8 +1896,8 @@ export default function DebtsPage() {
             
             {/* هدر: نام + موبایل — رنگ بر اساس مانده کل */}
             {(() => {
-              const debtorTotal = personDebts.filter(d => d.debt_type === 'debtor').reduce((s, d) => s + Number(d.amount), 0);
-              const creditorTotal = personDebts.filter(d => d.debt_type === 'creditor').reduce((s, d) => s + Number(d.amount), 0);
+              const debtorTotal = personDebts.filter(d => d.debt_type === 'debtor').reduce((s, d) => s + Number(d.tx_remaining ?? d.amount), 0);
+              const creditorTotal = personDebts.filter(d => d.debt_type === 'creditor').reduce((s, d) => s + Number(d.tx_remaining ?? d.amount), 0);
               const balance = debtorTotal - creditorTotal;
               const isDebtor = balance >= 0;
               
@@ -1699,12 +1925,26 @@ export default function DebtsPage() {
               <span className="text-[11px] text-gray-600">
                 🏪 {shopName}
               </span>
-              <button 
-                onClick={() => startNewEventForPerson(selectedPerson)}
-                className="text-[10px] bg-fuchsia-500 hover:bg-fuchsia-600 text-white px-3 py-1.5 rounded-lg font-bold"
-              >
-                ➕ رویداد جدید
-              </button>
+              <div className="flex gap-1">
+                {selectedTxIds.length > 0 && (
+                  <button 
+                    onClick={() => {
+                      setGroupSettleDate(getTodayShamsi());
+                      setGroupSettleNotes('تسویه گروهی');
+                      setShowGroupSettle(true);
+                    }}
+                    className="text-[10px] bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold"
+                  >
+                    ✅ تسویه گروهی ({selectedTxIds.length})
+                  </button>
+                )}
+                <button 
+                  onClick={() => startNewEventForPerson(selectedPerson)}
+                  className="text-[10px] bg-fuchsia-500 hover:bg-fuchsia-600 text-white px-3 py-1.5 rounded-lg font-bold"
+                >
+                  ➕ رویداد جدید
+                </button>
+              </div>
             </div>
 
 
@@ -1713,6 +1953,22 @@ export default function DebtsPage() {
               <table className="w-full text-[10px]">
                 <thead className="bg-gray-100 sticky top-0 z-10">
                   <tr>
+                    <th className="p-2 text-center w-8">
+                      <input 
+                        type="checkbox"
+                        checked={personDebts.length > 0 && personDebts.filter(d => Number(d.tx_remaining ?? d.amount) > 0.01).length === selectedTxIds.length && selectedTxIds.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            // انتخاب همه‌ی تراکنش‌های با مانده
+                            const unsettled = personDebts.filter(d => Number(d.tx_remaining ?? d.amount) > 0.01);
+                            setSelectedTxIds(unsettled.map(d => d.id));
+                          } else {
+                            setSelectedTxIds([]);
+                          }
+                        }}
+                        className="cursor-pointer"
+                      />
+                    </th>
                     <th className="p-2 text-center w-10">ردیف</th>
                     <th className="p-2 text-center">تاریخ ثبت</th>
                     <th className="p-2 text-center">مبلغ</th>
@@ -1727,15 +1983,45 @@ export default function DebtsPage() {
                 </thead>
                 <tbody>
                   {personDebts.map((d, i) => {
-                    const runningBalance = personDebts.slice(0, i + 1).reduce((s, x) => 
-                      s + (x.debt_type === 'debtor' ? Number(x.amount) : -Number(x.amount)), 0
-                    );
+                    // ✅ مانده = مجموع تجمعی tx_remaining
+                    const runningBalance = personDebts.slice(0, i + 1).reduce((s, x) => {
+                      const txRemaining = Number(x.tx_remaining ?? x.amount);
+                      return s + (x.debt_type === 'debtor' ? txRemaining : -txRemaining);
+                    }, 0);
+                    
+                    // مبلغ نمایشی = tx_remaining
+                    const txRemaining = Number(d.tx_remaining ?? d.amount);
+                    const originalAmount = Number(d.amount);
+                    const hasSettlement = txRemaining < originalAmount - 0.01;
                     return (
                     <tr key={d.id} className="border-b hover:bg-gray-50">
+                      <td className="p-2 text-center">
+                        {(() => {
+                          const rem = Number(d.tx_remaining ?? d.amount);
+                          const isSettled = rem <= 0.01;
+                          return (
+                            <input 
+                              type="checkbox"
+                              disabled={isSettled}
+                              checked={selectedTxIds.includes(d.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedTxIds([...selectedTxIds, d.id]);
+                                } else {
+                                  setSelectedTxIds(selectedTxIds.filter(id => id !== d.id));
+                                }
+                              }}
+                              className={`cursor-pointer ${isSettled ? 'opacity-30' : ''}`}
+                            />
+                          );
+                        })()}
+                      </td>
                       <td className="p-2 text-center text-gray-500">{i + 1}</td>
                       <td className="p-2 text-center">{d.transaction_date_shamsi || d.transaction_date}</td>
                       <td className={`p-2 text-center font-bold ${d.debt_type === 'debtor' ? 'text-red-600' : 'text-blue-600'}`}>
-                        {Number(d.amount).toLocaleString('fa-IR')}
+                        <span className={hasSettlement ? 'underline decoration-1' : ''}>
+                          {Number(Math.abs(txRemaining)).toLocaleString('fa-IR')}
+                        </span>
                       </td>
                       <td className={`p-2 text-center ${d.is_overdue ? 'text-red-500 animate-pulse font-bold' : ''}`}>
                         {d.due_date_shamsi || '—'}
@@ -1750,9 +2036,34 @@ export default function DebtsPage() {
                       </td>
                       <td className="p-2 text-center">
                         <div className="flex gap-1 justify-center">
+                          {/* دکمه تسویه یا تیک سبز */}
+                          {(() => {
+                            const txRemaining = Number(d.tx_remaining ?? d.amount);
+                            const isSettled = txRemaining <= 0.01;
+                            
+                            return (
+                              <button 
+                                onClick={() => {
+                                  setTxSettleTarget(d);
+                                  setShowSettleHistory(true);
+                                }}
+                                className={isSettled 
+                                  ? "text-green-500 hover:bg-green-50 p-1 rounded"
+                                  : "text-fuchsia-500 hover:bg-fuchsia-50 p-1 rounded"
+                                }
+                                title={isSettled ? 'مشاهده سوابق تسویه' : 'تسویه'}
+                              >
+                                {isSettled ? <Check size={12} /> : '💰'}
+                              </button>
+                            );
+                          })()}
+                          
+                          {/* ویرایش */}
                           <button onClick={() => { setSelectedPerson(null); handleEdit(d); }} className="text-blue-500 hover:bg-blue-50 p-1 rounded">
                             <Edit2 size={12} />
                           </button>
+                          
+                          {/* حذف */}
                           <button onClick={() => handleDelete(d.id)} className="text-red-500 hover:bg-red-50 p-1 rounded">
                             <Trash2 size={12} />
                           </button>
@@ -1769,8 +2080,8 @@ export default function DebtsPage() {
                     </td>
                     <td colSpan="5" className="p-2 text-center">
                       {(() => {
-                        const debtorTotal = personDebts.filter(d => d.debt_type === 'debtor').reduce((s, d) => s + Number(d.amount), 0);
-                        const creditorTotal = personDebts.filter(d => d.debt_type === 'creditor').reduce((s, d) => s + Number(d.amount), 0);
+                        const debtorTotal = personDebts.filter(d => d.debt_type === 'debtor').reduce((s, d) => s + Number(d.tx_remaining ?? d.amount), 0);
+                        const creditorTotal = personDebts.filter(d => d.debt_type === 'creditor').reduce((s, d) => s + Number(d.tx_remaining ?? d.amount), 0);
                         const balance = debtorTotal - creditorTotal;
                         const isDebtor = balance >= 0;
                         return (
@@ -1791,65 +2102,364 @@ export default function DebtsPage() {
         </div>
       )}
 
-      {/* مودال تقویم شمسی */}
-      {showDatePicker && (
-        <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-3" onClick={() => setShowDatePicker(false)}>
-          <div className="bg-white rounded-2xl border border-fuchsia-100 shadow-xl p-3 w-72" onClick={e => e.stopPropagation()}>
-            {/* هدر: سال و ماه */}
-            <div className="flex items-center justify-between mb-3 bg-gradient-to-l from-fuchsia-500 to-fuchsia-600 rounded-xl p-2">
-              <button type="button" onClick={() => { if (pickerMonth === 1) { setPickerMonth(12); setPickerYear(pickerYear - 1); } else setPickerMonth(pickerMonth - 1); }}
-                className="w-7 h-7 text-white hover:bg-white/20 rounded-lg flex items-center justify-center text-lg">‹</button>
-              <div className="flex gap-1">
-                <select value={pickerMonth} onChange={e => setPickerMonth(Number(e.target.value))}
-                  className="px-1.5 py-0.5 rounded-lg text-xs bg-white/90 font-bold text-fuchsia-700 cursor-pointer">
-                  {persianMonthNames.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                </select>
-                <select value={pickerYear} onChange={e => setPickerYear(Number(e.target.value))}
-                  className="px-1.5 py-0.5 rounded-lg text-xs bg-white/90 font-bold text-fuchsia-700 cursor-pointer">
-                  {[...Array(20)].map((_, i) => <option key={i} value={1400 + i}>{1400 + i}</option>)}
-                </select>
+      {/* ═══════════════════════════════════════════════
+          مودال تسویه جزئی
+      ═══════════════════════════════════════════════ */}
+      {/* ═══════════════════════════════════════════════
+          مودال تسویه گروهی
+      ═══════════════════════════════════════════════ */}
+      {showGroupSettle && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3" onClick={() => setShowGroupSettle(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* هدر */}
+            <div className="flex items-center justify-between p-3 bg-gradient-to-l from-green-500 to-green-600">
+              <h2 className="font-bold text-white text-sm">
+                ✅ تسویه گروهی ({selectedTxIds.length} تراکنش)
+              </h2>
+              <button onClick={() => setShowGroupSettle(false)} className="text-white"><X size={18} /></button>
+            </div>
+            
+            {/* محتوا */}
+            <div className="p-4">
+              <div className="bg-green-50 rounded-lg p-3 mb-3 text-center">
+                <p className="text-[10px] text-gray-500 mb-1">مبلغ کل تسویه</p>
+                <p className="text-lg font-extrabold text-green-600">
+                  {(() => {
+                    let total = 0;
+                    selectedTxIds.forEach(id => {
+                      const d = personDebts.find(x => x.id === id);
+                      if (d) total += Number(d.tx_remaining ?? d.amount);
+                    });
+                    return Number(total).toLocaleString('fa-IR');
+                  })()} تومان
+                </p>
               </div>
-              <button type="button" onClick={() => { if (pickerMonth === 12) { setPickerMonth(1); setPickerYear(pickerYear + 1); } else setPickerMonth(pickerMonth + 1); }}
-                className="w-7 h-7 text-white hover:bg-white/20 rounded-lg flex items-center justify-center text-lg">›</button>
+              
+              {/* تاریخ */}
+              <label className="text-[10px] text-gray-500 mb-1 block">📅 تاریخ تسویه *</label>
+              <button 
+                type="button"
+                onClick={() => {
+                  setPickerTarget('group_settle_date');
+                  setShowDatePicker(true);
+                }}
+                className="w-full px-3 py-2.5 border rounded-lg text-xs text-right bg-white hover:border-fuchsia-300 mb-3"
+              >
+                📅 {groupSettleDate || 'انتخاب تاریخ'}
+              </button>
+              
+              {/* توضیحات */}
+              <label className="text-[10px] text-gray-500 mb-1 block">📝 توضیحات</label>
+              <input 
+                value={groupSettleNotes}
+                onChange={e => setGroupSettleNotes(e.target.value)}
+                placeholder="تسویه گروهی"
+                className="w-full px-3 py-2 border rounded-lg text-xs mb-3"
+              />
             </div>
-
-            {/* روزهای هفته */}
-            <div className="grid grid-cols-7 gap-0.5 mb-1 text-center text-[10px] text-fuchsia-600 font-bold">
-              <div>ش</div><div>ی</div><div>د</div><div>س</div><div>چ</div><div>پ</div><div>ج</div>
-            </div>
-
-            {/* روزها */}
-            <div className="grid grid-cols-7 gap-0.5">
-              {[...Array(getDaysInMonth(pickerYear, pickerMonth))].map((_, i) => {
-                const day = i + 1;
-                const dateStr = `${pickerYear}/${String(pickerMonth).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
-                const isSelected = 
-                  (pickerTarget === 'transaction' && transactionDate === dateStr) ||
-                  (pickerTarget === 'due' && dueDate === dateStr) ||
-                  (pickerTarget === 'filter_from' && dateFrom === dateStr) ||
-                  (pickerTarget === 'filter_to' && dateTo === dateStr);
-                const isToday = (() => {
-                  try {
-                    const today = new Date();
-                    const { jy, jm, jd } = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
-                    return jy === pickerYear && jm === pickerMonth && jd === day;
-                  } catch (e) { return false; }
-                })();
-                return (
-                  <button key={i} type="button" onClick={() => selectDay(day)}
-                    className={`w-7 h-7 rounded-lg text-xs flex items-center justify-center transition-all ${
-                      isSelected ? 'bg-fuchsia-600 text-white font-bold' : 
-                      isToday ? 'bg-fuchsia-100 text-fuchsia-700 font-bold' : 
-                      'hover:bg-fuchsia-50 text-gray-700'
-                    }`}>
-                    {day}
-                  </button>
-                );
-              })}
+            
+            {/* دکمه‌ها */}
+            <div className="p-3 border-t bg-gray-50 flex gap-2">
+              <button 
+                onClick={handleGroupSettle}
+                className="flex-1 text-white py-2 rounded-lg text-xs font-bold bg-gradient-to-l from-green-500 to-green-600"
+              >
+                ✓ ثبت تسویه گروهی
+              </button>
+              <button 
+                onClick={() => setShowGroupSettle(false)}
+                className="bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-xs font-bold"
+              >
+                انصراف
+              </button>
             </div>
           </div>
         </div>
       )}
+      
+      {/* ═══════════════════════════════════════════════
+          مودال سوابق تسویه
+      ═══════════════════════════════════════════════ */}
+      {showSettleHistory && txSettleTarget && (() => {
+        const txRemaining = Number(txSettleTarget.tx_remaining ?? txSettleTarget.amount);
+        const originalAmount = Number(txSettleTarget.amount);
+        const isSettled = txRemaining <= 0.01;
+        const settlements = txSettleTarget.settlements_data || [];
+        const isDebtor = txSettleTarget.debt_type === 'debtor';
+        
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3" onClick={() => { setShowSettleHistory(false); setTxSettleTarget(null); }}>
+            <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+              {/* هدر */}
+              <div className={`flex items-center justify-between p-3 ${
+                isSettled 
+                  ? 'bg-gradient-to-l from-green-500 to-green-600'
+                  : (isDebtor ? 'bg-gradient-to-l from-red-500 to-red-600' : 'bg-gradient-to-l from-blue-500 to-blue-600')
+              }`}>
+                <h2 className="font-bold text-white text-sm">
+                  {isSettled ? '✅ تسویه شده' : '💰 تسویه حساب'} — {txSettleTarget.person_name}
+                </h2>
+                <button onClick={() => { setShowSettleHistory(false); setTxSettleTarget(null); }} className="text-white"><X size={18} /></button>
+              </div>
+              
+              {/* لیست سوابق */}
+              <div className="p-3 overflow-y-auto">
+                <div className="space-y-1">
+                  {/* ردیف مبلغ اولیه */}
+                  <div className="bg-gray-50 rounded-lg px-2 py-1.5 text-[10px]">
+                    <div className="grid grid-cols-4 gap-1 items-center">
+                      <span className="text-gray-500">💰 مبلغ اولیه:</span>
+                      <span className="text-gray-400 text-[9px] text-center">{txSettleTarget.transaction_date_shamsi}</span>
+                      <span className={`text-center font-bold ${isDebtor ? 'text-red-600' : 'text-blue-600'}`}>
+                        {Number(originalAmount).toLocaleString('fa-IR')}
+                      </span>
+                      <span></span>
+                    </div>
+                  </div>
+                  
+                  {/* ردیف‌های تسویه */}
+                  {settlements.map((s, i) => (
+                    <div key={i} className="bg-white rounded-lg px-2 py-1.5 text-[10px] border border-gray-100 hover:bg-gray-50">
+                      <div className="grid grid-cols-4 gap-1 items-center">
+                        <span className="text-red-500 font-bold">➖ {i + 1}</span>
+                        <span className="text-gray-500 text-center">{s.date_shamsi}</span>
+                        <span className="text-red-500 font-bold text-center">
+                          {Number(s.amount).toLocaleString('fa-IR')} -
+                        </span>
+                        <div className="flex gap-1 justify-end">
+                          <button 
+                            onClick={() => {
+                              // ویرایش — باز کردن فرم با مقدار فعلی
+                              setSettleAmount(String(s.amount));
+                              setSettleAmountDisplay(Number(s.amount).toLocaleString('fa-IR'));
+                              setSettleDate(s.date_shamsi);
+                              setSettleMethod('cash');
+                              setSettleNotes(s.notes || '');
+                              setEditingPayment(s);
+                              setShowSettleHistory(false);
+                              setShowSettlePartial(true);
+                            }}
+                            className="text-blue-500 hover:bg-blue-50 p-0.5 rounded"
+                            title="ویرایش"
+                          >
+                            <Edit2 size={10} />
+                          </button>
+                          <button 
+                            onClick={() => handleDeletePayment(s)}
+                            className="text-red-500 hover:bg-red-50 p-0.5 rounded"
+                            title="حذف"
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* ردیف تسویه جدید */}
+                  {!isSettled && (
+                    <button 
+                      onClick={() => {
+                        setSettleAmount('');
+                        setSettleAmountDisplay('');
+                        setSettleDate(getTodayShamsi());
+                        setSettleMethod('cash');
+                        setSettleNotes('');
+                        setShowSettleHistory(false);
+                        setShowSettlePartial(true);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 bg-fuchsia-50 hover:bg-fuchsia-100 rounded-lg px-2 py-2 text-[10px] text-fuchsia-600 font-bold"
+                    >
+                      ➕ تسویه جدید
+                    </button>
+                  )}
+                </div>
+              </div>
+              
+              {/* مانده نهایی */}
+              <div className={`p-3 border-t ${
+                isDebtor ? 'bg-red-50' : 'bg-blue-50'
+              } flex items-center justify-between`}>
+                <span className="text-[10px] text-gray-500">مانده:</span>
+                <span className={`text-sm font-extrabold ${isDebtor ? 'text-red-600' : 'text-blue-600'}`}>
+                  {Number(Math.abs(txRemaining)).toLocaleString('fa-IR')} تومان
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      
+      {/* ═══════════════════════════════════════════════
+          مودال فرم تسویه
+      ═══════════════════════════════════════════════ */}
+      {showSettlePartial && txSettleTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3" onClick={() => { setShowSettlePartial(false); setTxSettleTarget(null); }}>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* هدر */}
+            <div className="flex items-center justify-between p-3 bg-gradient-to-l from-fuchsia-500 to-fuchsia-600">
+              <h2 className="font-bold text-white text-sm">
+                📝 تسویه حساب {txSettleTarget?.person_name || ''}
+              </h2>
+              <button onClick={() => { setShowSettlePartial(false); setTxSettleTarget(null); }} className="text-white"><X size={18} /></button>
+            </div>
+            
+            {/* موجودی */}
+            {(() => {
+              const txRemaining = Number(txSettleTarget?.tx_remaining ?? txSettleTarget?.amount ?? 0);
+              const isDebtor = txSettleTarget?.debt_type === 'debtor';
+              const isSettled = txRemaining <= 0.01;
+              
+              return (
+                <>
+                  <div className="p-3 bg-gray-50 border-b text-center">
+                    <p className="text-[10px] text-gray-500">
+                      {isSettled ? '✅ تسویه شده' : 'مانده این تراکنش'}
+                    </p>
+                    <p className={`text-lg font-extrabold ${isDebtor ? 'text-red-600' : 'text-blue-600'}`}>
+                      {Number(Math.abs(txRemaining)).toLocaleString('fa-IR')} تومان
+                    </p>
+                  </div>
+                  
+                  {/* سوابق تسویه */}
+                  {txSettleTarget?.settlements?.length > 0 && (
+                    <div className="p-3 border-b bg-white max-h-40 overflow-y-auto">
+                      <p className="text-[10px] text-gray-500 mb-2">📋 سوابق تسویه:</p>
+                      <div className="space-y-1">
+                        {txSettleTarget.settlements.map((s, i) => (
+                          <div key={i} className="flex items-center justify-between text-[10px] bg-gray-50 rounded-lg px-2 py-1.5">
+                            <span className="text-gray-500">{s.transaction_date_shamsi}</span>
+                            <span className="font-bold text-fuchsia-600">{Number(s.amount).toLocaleString('fa-IR')}</span>
+                            <span className="text-gray-400 truncate max-w-[100px] text-[9px]">{s.notes}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* فرم تسویه */}
+                  {!isSettled && (
+                    <div className="p-3 overflow-y-auto flex-1">
+                      {/* مبلغ */}
+                      <label className="text-[10px] text-gray-500 mb-1 block">💰 مبلغ تسویه *</label>
+                      <div className="relative mb-3">
+                        <input 
+                          value={settleAmountDisplay}
+                          onChange={handleSettleAmountChange}
+                          placeholder="مبلغ"
+                          className="w-full px-3 py-2.5 border rounded-lg text-xs pl-14"
+                        />
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">تومان</span>
+                      </div>
+                      
+                      {/* دکمه ۱۰۰٪ */}
+                      <div className="flex gap-1 mb-3">
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const rem = Number(txSettleTarget?.tx_remaining ?? txSettleTarget?.amount ?? 0);
+                            setSettleAmount(String(rem));
+                            setSettleAmountDisplay(Number(rem).toLocaleString('fa-IR'));
+                          }}
+                          className="text-[10px] px-3 py-1.5 rounded-lg bg-fuchsia-50 text-fuchsia-600 hover:bg-fuchsia-100 font-bold"
+                        >
+                          ۱۰۰٪ مانده
+                        </button>
+                      </div>
+                      
+                      {/* تاریخ */}
+                      <label className="text-[10px] text-gray-500 mb-1 block">📅 تاریخ تسویه *</label>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setPickerTarget('settle_date');
+                          setShowDatePicker(true);
+                        }}
+                        className="w-full px-3 py-2.5 border rounded-lg text-xs text-right bg-white hover:border-fuchsia-300 mb-3"
+                      >
+                        📅 {settleDate || 'انتخاب تاریخ'}
+                      </button>
+                      
+                      {/* روش تسویه */}
+                      <label className="text-[10px] text-gray-500 mb-1 block">💳 روش تسویه *</label>
+                      <select 
+                        value={settleMethod}
+                        onChange={e => setSettleMethod(e.target.value)}
+                        className="w-full px-3 py-2.5 border rounded-lg text-xs bg-white mb-3"
+                      >
+                        <option value="cash">💵 نقدی</option>
+                        <option value="card">💳 کارت به کارت</option>
+                        <option value="pos">🏧 پوز</option>
+                        <option value="check">🧾 چک</option>
+                        <option value="other">📝 سایر</option>
+                      </select>
+                      
+                      {/* توضیحات */}
+                      <label className="text-[10px] text-gray-500 mb-1 block">📝 توضیحات (اختیاری)</label>
+                      <textarea 
+                        value={settleNotes}
+                        onChange={e => setSettleNotes(e.target.value)}
+                        rows={2}
+                        className="w-full px-3 py-2 border rounded-lg text-xs resize-none"
+                      />
+                    </div>
+                  )}
+                  
+                  {/* دکمه‌ها */}
+                  <div className="p-3 border-t bg-gray-50 flex gap-2">
+                    {!isSettled ? (
+                      <button 
+                        onClick={handleSettlePartial}
+                        className="flex-1 text-white py-2 rounded-lg text-xs font-bold bg-gradient-to-l from-fuchsia-500 to-fuchsia-600"
+                      >
+                        ✓ ثبت تسویه
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => { setShowSettlePartial(false); setTxSettleTarget(null); }}
+                        className="flex-1 text-white py-2 rounded-lg text-xs font-bold bg-gray-400"
+                      >
+                        بستن
+                      </button>
+                    )}
+                    {!isSettled && (
+                      <button 
+                        onClick={() => { setShowSettlePartial(false); setTxSettleTarget(null); }}
+                        className="bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-xs font-bold"
+                      >
+                        انصراف
+                      </button>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+      
+      {/* مودال تقویم شمسی */}
+      {showDatePicker && (
+        <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-3" onClick={() => setShowDatePicker(false)}>
+          <JalaliCalendar
+            value={
+              pickerTarget === 'transaction' ? transactionDate :
+              pickerTarget === 'due' ? dueDate :
+              pickerTarget === 'filter_from' ? dateFrom :
+              pickerTarget === 'filter_to' ? dateTo : ''
+            }
+            onChange={(date) => {
+              if (pickerTarget === 'transaction') setTransactionDate(date);
+              else if (pickerTarget === 'due') setDueDate(date);
+              else if (pickerTarget === 'filter_from') setDateFrom(date);
+              else if (pickerTarget === 'filter_to') setDateTo(date);
+              setShowDatePicker(false);
+            }}
+            theme="fuchsia"
+          />
+        </div>
+      )}
+
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { TrendingUp, ShoppingBag, DollarSign, Percent, Wallet, X, Calendar, Users } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 import api from '../../services/api';
+import JalaliCalendar from '../../components/JalaliCalendar';
 
 const PERIODS = [
   { value: 'daily', label: 'روزانه' },
@@ -231,12 +232,19 @@ export default function AnalyticsPage() {
               className={`text-xs px-3 py-1.5 rounded-lg whitespace-nowrap ${selectedShop === 'all' ? 'bg-pink-600 text-white' : 'bg-gray-50 hover:bg-gray-100'}`}>
               📊 همه فروشگاه‌ها
             </button>
-            {shops.map(s => (
-              <button key={s.id} onClick={() => setSelectedShop(s.id)}
-                className={`text-xs px-3 py-1.5 rounded-lg whitespace-nowrap ${selectedShop === s.id ? 'bg-pink-600 text-white' : 'bg-gray-50 hover:bg-gray-100'}`}>
-                🏪 {s.name}
-              </button>
-            ))}
+            {shops.map(s => {
+              const isActive = String(selectedShop) === String(s.id);
+              return (
+                <button key={s.id} onClick={() => setSelectedShop(String(s.id))}
+                  className={`text-xs px-3 py-1.5 rounded-lg whitespace-nowrap transition-all ${
+                    isActive 
+                      ? 'bg-gradient-to-l from-fuchsia-500 to-fuchsia-600 text-white font-bold shadow-md' 
+                      : 'bg-gray-50 hover:bg-gray-100 text-gray-600'
+                  }`}>
+                  🏪 {s.name}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -462,70 +470,107 @@ export default function AnalyticsPage() {
                       <div className="text-center py-10 text-gray-400 text-xs">هنوز بدهکاری ثبت نشده</div>
                     ) : (
                       <div className="space-y-2">
-                        {debtsData.shop_summary.map(s => (
-                          <button 
-                            key={s.shop_id}
-                            onClick={() => {
-                              setSelectedShop(String(s.shop_id));
-                              setShowDebts(false);
-                            }}
-                            className="w-full border border-gray-100 rounded-xl p-3 hover:border-fuchsia-300 hover:bg-fuchsia-50/30 transition-all text-right"
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs font-bold text-gray-700">
-                                {s.shop_id ? '🏪 ' + s.shop_name : '📊 ' + s.shop_name}
-                              </span>
-                              <span className={`text-xs font-extrabold ${s.balance >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                                {Number(Math.abs(s.balance)).toLocaleString('fa-IR')} تومان
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between text-[10px]">
-                              <div className="flex gap-2">
-                                <span className="text-red-600">🔴 {Number(s.debtor_remaining).toLocaleString('fa-IR')}</span>
-                              </div>
-                              <div className="flex gap-2">
-                                <span className="text-blue-600">🔵 {Number(s.creditor_remaining).toLocaleString('fa-IR')}</span>
-                              </div>
-                            </div>
-                            <p className="text-[9px] text-gray-400 mt-1 text-center">
-                              {s.balance >= 0 ? '🔴 بدهکار' : '🔵 بستانکار'}
-                            </p>
-                          </button>
-                        ))}
+                        {debtsData.shop_summary
+                          .filter(s => s.shop_id !== null)  // حذف فروشگاه عمومی
+                          .map(s => {
+                            const isDebtor = s.balance >= 0;
+                            return (
+                              <Link
+                                key={s.shop_id}
+                                to={`/seller/debts?shop=${s.shop_id}`}
+                                className="block w-full border border-gray-100 rounded-xl p-3 hover:border-fuchsia-300 hover:bg-fuchsia-50/30 transition-all text-right"
+                              >
+                                {/* خط اول: نام فروشگاه (چپ) + مانده کل (راست) */}
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs font-bold text-gray-700">
+                                    🏪 {s.shop_name}
+                                  </span>
+                                  <span className={`text-xs font-bold ${isDebtor ? 'text-red-600' : 'text-blue-600'}`}>
+                                    {isDebtor ? '🔴' : '🔵'} {Number(Math.abs(s.balance)).toLocaleString('fa-IR')}
+                                  </span>
+                                </div>
+                                
+                                {/* اعداد تفکیکی زیر مانده (چپ‌چین) */}
+                                <div className="text-left space-y-0.5">
+                                  {s.debtor_remaining > 0 && (
+                                    <div className="text-[10px] text-red-600 font-bold">
+                                      🔴 {Number(s.debtor_remaining).toLocaleString('fa-IR')}
+                                      <span className="text-gray-400 font-normal mr-1">({s.debtor_count || 0} تراکنش)</span>
+                                    </div>
+                                  )}
+                                  {s.creditor_remaining > 0 && (
+                                    <div className="text-[10px] text-blue-600 font-bold">
+                                      🔵 {Number(s.creditor_remaining).toLocaleString('fa-IR')}
+                                      <span className="text-gray-400 font-normal mr-1">({s.creditor_count || 0} تراکنش)</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </Link>
+                            );
+                          })}
                       </div>
                     )
                   ) : (
-                    // حالت فروشگاه خاص: لیست تراکنش‌ها
-                    debtsData.debts.map(d => (
-                      <div key={d.id} className="border border-gray-100 rounded-xl p-2.5">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className={`text-xs font-bold ${d.debt_type === 'debtor' ? 'text-red-600' : 'text-blue-600'}`}>
-                            {d.debt_type === 'debtor' ? '🔴' : '🔵'} {d.person_name}
-                          </span>
-                          <span className={`text-xs font-extrabold ${d.debt_type === 'debtor' ? 'text-red-500' : 'text-blue-500'}`}>
-                            {Number(d.amount).toLocaleString('fa-IR')}
-                          </span>
+                    // حالت فروشگاه خاص: گروه‌بندی بر اساس شخص
+                    Object.values(debtsData.debts.reduce((acc, d) => {
+                      const key = d.person_name;
+                      if (!acc[key]) {
+                        acc[key] = {
+                          name: d.person_name,
+                          phone: d.person_phone,
+                          debtor: 0,
+                          creditor: 0,
+                          count: 0,
+                        };
+                      }
+                      if (d.debt_type === 'debtor') acc[key].debtor += Number(d.amount);
+                      else acc[key].creditor += Number(d.amount);
+                      acc[key].count += 1;
+                      return acc;
+                    }, {}))
+                    .sort((a, b) => {
+                      const balA = Math.abs(a.debtor - a.creditor);
+                      const balB = Math.abs(b.debtor - b.creditor);
+                      return balB - balA;
+                    })
+                    .map((person, idx) => {
+                      const balance = person.debtor - person.creditor;
+                      const isDebtor = balance >= 0;
+                      return (
+                        <div key={idx} className="border border-gray-100 rounded-xl p-2.5">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-xs font-bold ${isDebtor ? 'text-red-600' : 'text-blue-600'}`}>
+                              {isDebtor ? '🔴' : '🔵'} {person.name}
+                            </span>
+                            <span className={`text-xs font-extrabold ${isDebtor ? 'text-red-500' : 'text-blue-500'}`}>
+                              {Number(Math.abs(balance)).toLocaleString('fa-IR')}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-gray-500">
+                            <span>📱 {person.phone}</span>
+                            <span className="text-[9px] text-gray-400">
+                              {person.count} تراکنش • {isDebtor ? 'بدهکار' : 'بستانکار'}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 text-[10px] text-gray-500">
-                          <span>{d.person_phone}</span>
-                        </div>
-                        {d.notes && <p className="text-[10px] text-gray-400 mt-1">{d.notes}</p>}
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               )}
             </div>
 
-            {/* دکمه‌ها */}
-            <div className="p-3 border-t bg-gray-50 flex gap-2">
-              <Link 
-                to={`/seller/debts${selectedShop !== 'all' ? `?shop=${selectedShop}` : ''}`}
-                className="flex-1 text-center text-xs bg-blue-600 text-white py-2 rounded-lg font-bold"
-              >
-                ⚙️ مدیریت بدهکاران/بستانکاران
-              </Link>
-            </div>
+            {/* دکمه مدیریت — فقط برای فروشگاه خاص */}
+            {selectedShop !== 'all' && (
+              <div className="p-3 border-t bg-gray-50 flex gap-2">
+                <Link 
+                  to={`/seller/debts?shop=${selectedShop}`}
+                  className="flex-1 text-center text-xs bg-fuchsia-500 text-white py-2 rounded-lg font-bold"
+                >
+                  ⚙️ مدیریت بدهکاران/بستانکاران
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -720,45 +765,22 @@ export default function AnalyticsPage() {
       {/* مودال تقویم شمسی */}
       {showDatePicker && (
         <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-3" onClick={() => setShowDatePicker(false)}>
-          <div className="bg-white rounded-2xl w-72 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between bg-gradient-to-l from-pink-500 to-pink-600 rounded-t-2xl p-3">
-              <button onClick={() => { if (pickerMonth === 1) { setPickerMonth(12); setPickerYear(pickerYear - 1); } else setPickerMonth(pickerMonth - 1); }}
-                className="w-7 h-7 text-white hover:bg-white/20 rounded-lg flex items-center justify-center text-lg">‹</button>
-              <div className="flex gap-1">
-                <select value={pickerMonth} onChange={e => setPickerMonth(Number(e.target.value))}
-                  className="px-1.5 py-0.5 rounded-lg text-xs bg-white/90 font-bold text-pink-700">
-                  {persianMonths.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                </select>
-                <select value={pickerYear} onChange={e => setPickerYear(Number(e.target.value))}
-                  className="px-1.5 py-0.5 rounded-lg text-xs bg-white/90 font-bold text-pink-700">
-                  {[...Array(20)].map((_, i) => <option key={i} value={1400 + i}>{1400 + i}</option>)}
-                </select>
-              </div>
-              <button onClick={() => { if (pickerMonth === 12) { setPickerMonth(1); setPickerYear(pickerYear + 1); } else setPickerMonth(pickerMonth + 1); }}
-                className="w-7 h-7 text-white hover:bg-white/20 rounded-lg flex items-center justify-center text-lg">›</button>
-            </div>
-            <div className="p-3">
-              <div className="grid grid-cols-7 gap-0.5 mb-1 text-center text-[10px] text-pink-600 font-bold">
-                <div>ش</div><div>ی</div><div>د</div><div>س</div><div>چ</div><div>پ</div><div>ج</div>
-              </div>
-              <div className="grid grid-cols-7 gap-0.5">
-                {[...Array(getDaysInMonth(pickerYear, pickerMonth))].map((_, i) => {
-                  const day = i + 1;
-                  const currentDate = pickerTarget === 'from' ? dateFrom :
-                                      pickerTarget === 'to' ? dateTo :
-                                      pickerTarget === 'matrix_from' ? matrixDateFrom :
-                                      pickerTarget === 'matrix_to' ? matrixDateTo : '';
-                  const isSelected = currentDate === `${pickerYear}/${String(pickerMonth).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
-                  return (
-                    <button key={i} onClick={() => selectDay(day)}
-                      className={`w-7 h-7 rounded-lg text-xs flex items-center justify-center ${isSelected ? 'bg-pink-600 text-white font-bold' : 'hover:bg-pink-50 text-gray-700'}`}>
-                      {day}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+          <JalaliCalendar
+            value={
+              pickerTarget === 'from' ? dateFrom :
+              pickerTarget === 'to' ? dateTo :
+              pickerTarget === 'matrix_from' ? matrixDateFrom :
+              pickerTarget === 'matrix_to' ? matrixDateTo : ''
+            }
+            onChange={(date) => {
+              if (pickerTarget === 'from') setDateFrom(date);
+              else if (pickerTarget === 'to') setDateTo(date);
+              else if (pickerTarget === 'matrix_from') setMatrixDateFrom(date);
+              else if (pickerTarget === 'matrix_to') setMatrixDateTo(date);
+              setShowDatePicker(false);
+            }}
+            theme="pink"
+          />
         </div>
       )}
 

@@ -255,6 +255,15 @@ class SellerDebt(models.Model):
     notes = models.TextField(blank=True, default='', verbose_name='شرح')
     transaction_date = models.DateField(verbose_name='تاریخ تراکنش')
     
+    # ═══ اتصال به تراکنش اصلی (برای تسویه) ═══
+    parent_debt = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='settlements',
+        verbose_name='تراکنش اصلی'
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -272,9 +281,31 @@ class SellerDebt(models.Model):
         return f"{self.get_debt_type_display()} - {self.person_name} - {self.amount}"
     
     @property
+    def settlement_paid(self):
+        """مجموع تسویه‌های این تراکنش (از settlements)"""
+        from django.db.models import Sum
+        result = self.settlements.aggregate(total=Sum('amount'))['total']
+        return float(result or 0)
+    
+    @property
+    def tx_remaining(self):
+        """مانده خود تراکنش = amount - مجموع پرداخت‌ها (DebtPayment + settlements)"""
+        from django.db.models import Sum
+        paid = self.payments.aggregate(total=Sum('amount'))['total'] or 0
+        settled = self.settlement_paid
+        return float(self.amount) - float(paid) - float(settled)
+    
+    @property
+    def total_paid(self):
+        """مجموع پرداخت‌ها از DebtPayment"""
+        from django.db.models import Sum
+        result = self.payments.aggregate(total=Sum('amount'))['total']
+        return float(result or 0)
+    
+    @property
     def remaining(self):
-        """مانده"""
-        return float(self.amount) - float(self.paid_amount)
+        """مانده = مبلغ کل - مجموع پرداخت‌ها"""
+        return float(self.amount) - self.total_paid
     
     @property
     def is_overdue(self):
@@ -283,3 +314,40 @@ class SellerDebt(models.Model):
         if not self.due_date:
             return False
         return self.due_date < timezone.now().date() and self.remaining > 0
+
+class DebtPayment(models.Model):
+    """پرداخت‌های بدهی/طلب"""
+    
+    PAYMENT_METHOD_CHOICES = [
+        ('cash', 'نقدی'),
+        ('card', 'کارت به کارت'),
+        ('pos', 'پوز'),
+        ('check', 'چک'),
+        ('other', 'سایر'),
+    ]
+    
+    debt = models.ForeignKey(
+        'shops.SellerDebt',
+        on_delete=models.CASCADE,
+        related_name='payments',
+        verbose_name='بدهی/طلب'
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=0, verbose_name='مبلغ (تومان)')
+    payment_date = models.DateField(verbose_name='تاریخ تسویه')
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        default='cash',
+        verbose_name='روش تسویه'
+    )
+    notes = models.TextField(blank=True, default='', verbose_name='توضیحات')
+    is_full_settlement = models.BooleanField(default=False, verbose_name='تسویه کامل')
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = 'پرداخت'
+        verbose_name_plural = 'پرداخت‌ها'
+        ordering = ['-payment_date', '-created_at']
+    
+    def __str__(self):
+        return f"{self.debt.person_name} - {self.amount} ({self.get_payment_method_display()})"

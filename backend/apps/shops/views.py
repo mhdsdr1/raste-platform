@@ -488,6 +488,8 @@ def list_debts(request):
                 'creditor_remaining': shop_creditor_remaining,
                 'balance': shop_balance,
                 'count': shop_debts.count(),
+                'debtor_count': shop_debts.filter(debt_type='debtor').count(),
+                'creditor_count': shop_debts.filter(debt_type='creditor').count(),
             })
     
     # هزینه‌های عمومی (بدون فروشگاه)
@@ -558,14 +560,15 @@ def create_debt(request):
     if greg_due and isinstance(greg_due, str):
         greg_due = dt.strptime(greg_due, '%Y-%m-%d').date()
     
-    # فروشگاه
+    # فروشگاه (اجباری)
     shop_id = request.data.get('shop')
-    shop = None
-    if shop_id and shop_id != 'all':
-        try:
-            shop = Shop.objects.get(id=shop_id, owner=request.user)
-        except Shop.DoesNotExist:
-            pass
+    if not shop_id or shop_id == 'all':
+        return Response({'error': 'فروشگاه الزامی است'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        shop = Shop.objects.get(id=shop_id, owner=request.user)
+    except Shop.DoesNotExist:
+        return Response({'error': 'فروشگاه یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
     
     person_name = request.data.get('person_name', '').strip()
     person_national_id = request.data.get('person_national_id', '').strip()
@@ -591,6 +594,15 @@ def create_debt(request):
     if sheba_number and len(sheba_number) > 24:
         return Response({'error': 'شبا نباید بیشتر از ۲۴ رقم باشد'}, status=status.HTTP_400_BAD_REQUEST)
     
+    # parent_debt (برای تسویه)
+    parent_debt_id = request.data.get('parent_debt')
+    parent_debt = None
+    if parent_debt_id:
+        try:
+            parent_debt = SellerDebt.objects.get(id=parent_debt_id, seller=request.user)
+        except SellerDebt.DoesNotExist:
+            pass
+    
     try:
         debt = SellerDebt.objects.create(
             seller=request.user,
@@ -613,6 +625,7 @@ def create_debt(request):
             installment_amount=request.data.get('installment_amount'),
             notes=request.data.get('notes', ''),
             transaction_date=greg_trans,
+            parent_debt=parent_debt,
         )
     except Exception as e:
         import traceback
@@ -745,3 +758,109 @@ def get_person_by_nid(request):
             'sheba_number': debt.sheba_number,
         }
     })
+
+# ═══════════════════════════════════════════════════════════
+# پرداخت‌ها (تسویه)
+# ═══════════════════════════════════════════════════════════
+
+@extend_schema(description='لیست پرداخت‌های یک بدهی')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_payments(request, debt_id):
+    """لیست پرداخت‌های یه بدهی"""
+    from .models import SellerDebt, DebtPayment
+    from .serializers import DebtPaymentSerializer
+    
+    try:
+        debt = SellerDebt.objects.get(id=debt_id, seller=request.user)
+    except SellerDebt.DoesNotExist:
+        return Response({'error': 'یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    
+    payments = debt.payments.all()
+    
+    return Response({
+        'debt_id': debt.id,
+        'person_name': debt.person_name,
+        'person_phone': debt.person_phone,
+        'debt_type': debt.debt_type,
+        'total_amount': float(debt.amount),
+        'total_paid': float(debt.total_paid),
+        'remaining': float(debt.remaining),
+        'payments': DebtPaymentSerializer(payments, many=True).data,
+    })
+
+
+@extend_schema(description='ثبت پرداخت جدید')
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_payment(request, debt_id):
+    """ثبت پرداخت جدید"""
+    from .models import SellerDebt, DebtPayment
+    from .serializers import DebtPaymentSerializer
+    from apps.orders.views import to_gregorian_date
+    from datetime import datetime as dt
+    
+    try:
+        debt = SellerDebt.objects.get(id=debt_id, seller=request.user)
+    except SellerDebt.DoesNotExist:
+        return Response({'error': 'یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    
+    amount = float(request.data.get('amount', 0))
+    if amount <= 0:
+        return Response({'error': 'مبلغ باید بیشتر از صفر باشد'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if amount > float(debt.remaining):
+        return Response({'error': f'مبلغ بیشتر از مانده ({debt.remaining}) است'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # تاریخ
+    pay_date = request.data.get('payment_date')
+    if pay_date:
+        greg_date = to_gregorian_date(pay_date)
+        if greg_date and isinstance(greg_date, str):
+            greg_date = dt.strptime(greg_date, '%Y-%m-%d').date()
+    else:
+        from django.utils import timezone
+        greg_date = timezone.now().date()
+    
+    # بررسی تسویه کامل
+    is_full = (amount == float(debt.remaining))
+    
+    payment = DebtPayment.objects.create(
+        debt=debt,
+        amount=amount,
+        payment_date=greg_date,
+        payment_method=request.data.get('payment_method', 'cash'),
+        notes=request.data.get('notes', ''),
+        is_full_settlement=is_full,
+    )
+    
+    # آپدیت paid_amount توی SellerDebt
+    debt.paid_amount = debt.total_paid
+    debt.save()
+    
+    return Response({
+        'payment': DebtPaymentSerializer(payment).data,
+        'debt_remaining': float(debt.remaining),
+        'debt_total_paid': float(debt.total_paid),
+    }, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(description='حذف پرداخت')
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_payment(request, payment_id):
+    """حذف پرداخت"""
+    from .models import DebtPayment
+    
+    try:
+        payment = DebtPayment.objects.get(id=payment_id, debt__seller=request.user)
+        debt = payment.debt
+        payment.delete()
+        
+        # آپدیت paid_amount
+        debt.paid_amount = debt.total_paid
+        debt.save()
+        
+        return Response({'message': 'حذف شد', 'debt_remaining': float(debt.remaining)})
+    except DebtPayment.DoesNotExist:
+        return Response({'error': 'یافت نشد'}, status=status.HTTP_404_NOT_FOUND)

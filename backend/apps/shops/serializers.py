@@ -1,9 +1,62 @@
 from rest_framework import serializers
-from .models import Shop, Product, SellerExpense, SellerDebt
+from .models import Shop, Product, SellerExpense, SellerDebt, DebtPayment
 
 
 class ProductSerializer(serializers.ModelSerializer):
     shop_name = serializers.CharField(source='shop.name', read_only=True)
+    settlement_paid = serializers.FloatField(read_only=True)
+    tx_remaining = serializers.FloatField(read_only=True)
+    settlements_data = serializers.SerializerMethodField()
+    
+    def get_settlements_data(self, obj):
+        result = []
+        
+        # ═══ ۱. از DebtPayment (payments) ═══
+        for p in obj.payments.all().order_by('payment_date'):
+            try:
+                import jdatetime
+                jd = jdatetime.date.fromgregorian(date=p.payment_date)
+                date_shamsi = f"{jd.year}/{jd.month:02d}/{jd.day:02d}"
+            except:
+                date_shamsi = str(p.payment_date)
+            
+            result.append({
+                'id': 'pay_' + str(p.id),
+                'date_shamsi': date_shamsi,
+                'date': str(p.payment_date),
+                'amount': float(p.amount),
+                'method': p.get_payment_method_display(),
+                'notes': p.notes or '',
+            })
+        
+        # ═══ ۲. از settlements (SellerDebt معکوس) ═══
+        for s in obj.settlements.all().order_by('transaction_date'):
+            try:
+                import jdatetime
+                jd = jdatetime.date.fromgregorian(date=s.transaction_date)
+                date_shamsi = f"{jd.year}/{jd.month:02d}/{jd.day:02d}"
+            except:
+                date_shamsi = str(s.transaction_date)
+            
+            notes = s.notes or ''
+            method = 'نقدی'
+            if 'کارت' in notes: method = 'کارت به کارت'
+            elif 'پوز' in notes: method = 'پوز'
+            elif 'چک' in notes: method = 'چک'
+            elif 'سایر' in notes: method = 'سایر'
+            
+            result.append({
+                'id': 'set_' + str(s.id),
+                'date_shamsi': date_shamsi,
+                'date': str(s.transaction_date),
+                'amount': float(s.amount),
+                'method': method,
+                'notes': notes,
+            })
+        
+        # مرتب‌سازی بر اساس تاریخ
+        result.sort(key=lambda x: x['date'])
+        return result
     is_stock = serializers.BooleanField(read_only=True)
     owner_name = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
@@ -102,6 +155,59 @@ class SellerDebtSerializer(serializers.ModelSerializer):
     remaining = serializers.FloatField(read_only=True)
     is_overdue = serializers.BooleanField(read_only=True)
     shop_name = serializers.CharField(source='shop.name', read_only=True)
+    settlement_paid = serializers.FloatField(read_only=True)
+    tx_remaining = serializers.FloatField(read_only=True)
+    settlements_data = serializers.SerializerMethodField()
+    
+    def get_settlements_data(self, obj):
+        result = []
+        
+        # ═══ ۱. از DebtPayment (payments) ═══
+        for p in obj.payments.all().order_by('payment_date'):
+            try:
+                import jdatetime
+                jd = jdatetime.date.fromgregorian(date=p.payment_date)
+                date_shamsi = f"{jd.year}/{jd.month:02d}/{jd.day:02d}"
+            except:
+                date_shamsi = str(p.payment_date)
+            
+            result.append({
+                'id': 'pay_' + str(p.id),
+                'date_shamsi': date_shamsi,
+                'date': str(p.payment_date),
+                'amount': float(p.amount),
+                'method': p.get_payment_method_display(),
+                'notes': p.notes or '',
+            })
+        
+        # ═══ ۲. از settlements (SellerDebt معکوس) ═══
+        for s in obj.settlements.all().order_by('transaction_date'):
+            try:
+                import jdatetime
+                jd = jdatetime.date.fromgregorian(date=s.transaction_date)
+                date_shamsi = f"{jd.year}/{jd.month:02d}/{jd.day:02d}"
+            except:
+                date_shamsi = str(s.transaction_date)
+            
+            notes = s.notes or ''
+            method = 'نقدی'
+            if 'کارت' in notes: method = 'کارت به کارت'
+            elif 'پوز' in notes: method = 'پوز'
+            elif 'چک' in notes: method = 'چک'
+            elif 'سایر' in notes: method = 'سایر'
+            
+            result.append({
+                'id': 'set_' + str(s.id),
+                'date_shamsi': date_shamsi,
+                'date': str(s.transaction_date),
+                'amount': float(s.amount),
+                'method': method,
+                'notes': notes,
+            })
+        
+        # مرتب‌سازی بر اساس تاریخ
+        result.sort(key=lambda x: x['date'])
+        return result
     
     # تاریخ‌های شمسی
     transaction_date_shamsi = serializers.SerializerMethodField()
@@ -140,6 +246,34 @@ class SellerDebtSerializer(serializers.ModelSerializer):
             'payment_type', 'payment_type_display',
             'is_installment', 'installment_count', 'installment_amount',
             'notes', 'transaction_date', 'transaction_date_shamsi', 'due_date_shamsi',
+            'parent_debt', 'settlement_paid', 'tx_remaining', 'settlements_data',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'seller']
+
+class DebtPaymentSerializer(serializers.ModelSerializer):
+    """سریالایزر پرداخت‌های بدهی/طلب"""
+    
+    payment_method_display = serializers.CharField(source='get_payment_method_display', read_only=True)
+    payment_date_shamsi = serializers.SerializerMethodField()
+    
+    def get_payment_date_shamsi(self, obj):
+        if not obj.payment_date:
+            return ''
+        try:
+            import jdatetime
+            jd = jdatetime.date.fromgregorian(date=obj.payment_date)
+            return f"{jd.year}/{jd.month:02d}/{jd.day:02d}"
+        except:
+            return str(obj.payment_date)
+    
+    class Meta:
+        model = DebtPayment
+        fields = [
+            'id', 'debt', 'amount',
+            'payment_date', 'payment_date_shamsi',
+            'payment_method', 'payment_method_display',
+            'notes', 'is_full_settlement',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']

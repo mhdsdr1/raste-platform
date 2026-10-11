@@ -4,6 +4,7 @@ import { Plus, Trash2, Edit3, Calendar } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 import api from '../../services/api';
 import { toast } from 'sonner';
+import JalaliCalendar, { todayShamsi } from '../../components/JalaliCalendar';
 
 const PRESET_EXPENSES = [
   { icon: '🚚', title: 'کرایه' },
@@ -66,6 +67,19 @@ export default function ExpensesPage() {
   // گرفتن روزهای ماه شمسی
   const getDaysInMonth = (jy, jm) => {
     return jalaali.jalaaliMonthLength(jy, jm);
+  };
+  
+  // ═══ محاسبه روز هفته اولین روز ماه (۰=شنبه، ۱=یکشنبه، ...) ═══
+  const getFirstDayOfWeek = (jy, jm) => {
+    try {
+      // تبدیل شمسی به میلادی
+      const g = jalaali.toGregorian(jy, jm, 1);
+      const date = new Date(g.gy, g.gm - 1, g.gd);
+      const jsDay = date.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+      // تبدیل به شمسی: شنبه=0, یکشنبه=1, ..., جمعه=6
+      // jsDay: 6=Saturday→0, 0=Sunday→1, 1=Monday→2, ..., 5=Friday→6
+      return (jsDay + 1) % 7;
+    } catch (e) { return 0; }
   };
 
   const fetchExpenses = async () => {
@@ -206,54 +220,15 @@ export default function ExpensesPage() {
                 </button>
 
                 {showPicker && (
-                  <div className="absolute z-50 top-full right-0 mt-2 bg-white rounded-2xl border border-pink-100 shadow-xl p-3 w-64">
-                    {/* هدر: سال و ماه */}
-                    <div className="flex items-center justify-between mb-3 bg-gradient-to-l from-pink-500 to-pink-600 rounded-xl p-2">
-                      <button type="button" onClick={() => { if (pickerMonth === 1) { setPickerMonth(12); setPickerYear(pickerYear - 1); } else setPickerMonth(pickerMonth - 1); }}
-                        className="w-7 h-7 text-white hover:bg-white/20 rounded-lg flex items-center justify-center text-lg">‹</button>
-                      <div className="flex gap-1">
-                        <select value={pickerMonth} onChange={e => setPickerMonth(Number(e.target.value))}
-                          className="px-1.5 py-0.5 rounded-lg text-xs bg-white/90 font-bold text-pink-700 cursor-pointer">
-                          {persianMonths.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                        </select>
-                        <select value={pickerYear} onChange={e => setPickerYear(Number(e.target.value))}
-                          className="px-1.5 py-0.5 rounded-lg text-xs bg-white/90 font-bold text-pink-700 cursor-pointer">
-                          {[...Array(20)].map((_, i) => <option key={i} value={1400 + i}>{1400 + i}</option>)}
-                        </select>
-                      </div>
-                      <button type="button" onClick={() => { if (pickerMonth === 12) { setPickerMonth(1); setPickerYear(pickerYear + 1); } else setPickerMonth(pickerMonth + 1); }}
-                        className="w-7 h-7 text-white hover:bg-white/20 rounded-lg flex items-center justify-center text-lg">›</button>
-                    </div>
-
-                    {/* روزهای هفته */}
-                    <div className="grid grid-cols-7 gap-0.5 mb-1 text-center text-[10px] text-pink-600 font-bold">
-                      <div>ش</div><div>ی</div><div>د</div><div>س</div><div>چ</div><div>پ</div><div>ج</div>
-                    </div>
-
-                    {/* روزها */}
-                    <div className="grid grid-cols-7 gap-0.5">
-                      {[...Array(daysInMonth)].map((_, i) => {
-                        const day = i + 1;
-                        const isSelected = persianDate === `${pickerYear}/${String(pickerMonth).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
-                        const isToday = (() => {
-                          try {
-                            const today = new Date();
-                            const { jy, jm, jd } = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
-                            return jy === pickerYear && jm === pickerMonth && jd === day;
-                          } catch (e) { return false; }
-                        })();
-                        return (
-                          <button key={i} type="button" onClick={() => selectDay(day)}
-                            className={`w-7 h-7 rounded-lg text-xs flex items-center justify-center transition-all ${
-                              isSelected ? 'bg-pink-600 text-white font-bold' : 
-                              isToday ? 'bg-pink-100 text-pink-700 font-bold' : 
-                              'hover:bg-pink-50 text-gray-700'
-                            }`}>
-                            {day}
-                          </button>
-                        );
-                      })}
-                    </div>
+                  <div className="absolute z-50 top-full right-0 mt-2">
+                    <JalaliCalendar
+                      value={persianDate}
+                      onChange={(date) => {
+                        setPersianDate(date);
+                        setShowPicker(false);
+                      }}
+                      theme="pink"
+                    />
                   </div>
                 )}
               </div>

@@ -66,5 +66,10 @@ urlpatterns += [
     path('debts/<int:debt_id>/', views.update_debt, name='update-debt'),
     path('debts/<int:debt_id>/delete/', views.delete_debt, name='delete-debt'),
     path('debts/<int:debt_id>/pay/', views.pay_debt, name='pay-debt'),
+    # پرداخت‌ها
+    path('debts/<int:debt_id>/payments/', views.list_payments, name='list-payments'),
+    path('debts/<int:debt_id>/payments/create/', views.create_payment, name='create-payment'),
+    path('debts/payments/<int:payment_id>/delete/', views.delete_payment, name='delete-payment'),
+
 
 ]
