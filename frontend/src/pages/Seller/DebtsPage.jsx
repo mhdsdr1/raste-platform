@@ -50,7 +50,7 @@ export default function DebtsPage() {
   const [errors, setErrors] = useState({ phone: '', nationalId: '', postalCode: '', cardNumber: '', sheba: '' });
   
   // فیلترها
-  const [filterTab, setFilterTab] = useState('date');
+  const [filterTab, setFilterTab] = useState('persons');
   const [dueFilterType, setDueFilterType] = useState('all');
   const [dueSearch, setDueSearch] = useState('');
   const [dueSort, setDueSort] = useState('desc');
@@ -64,6 +64,9 @@ export default function DebtsPage() {
   const [settleNotes, setSettleNotes] = useState('');
   const [showSettleDatePicker, setShowSettleDatePicker] = useState(false);
   const [settlePayments, setSettlePayments] = useState([]);
+  const [personPlans, setPersonPlans] = useState([]);
+  const [showInstallmentModal, setShowInstallmentModal] = useState(false);
+  const [installmentPlanTarget, setInstallmentPlanTarget] = useState(null);
   const [txSettleTarget, setTxSettleTarget] = useState(null);
   const [showSettleHistory, setShowSettleHistory] = useState(false);
   const [showSettleForm, setShowSettleForm] = useState(false);
@@ -74,6 +77,8 @@ export default function DebtsPage() {
   const [groupSettleNotes, setGroupSettleNotes] = useState('');
   const [showGroupDatePicker, setShowGroupDatePicker] = useState(false);
   const [showDueSuggestions, setShowDueSuggestions] = useState(false);
+  const [personSortField, setPersonSortField] = useState('date'); // date | amount
+  const [personSortDir, setPersonSortDir] = useState('desc'); // asc | desc
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [personDebts, setPersonDebts] = useState([]);
   const [personSort, setPersonSort] = useState('desc'); // desc | asc
@@ -255,6 +260,23 @@ export default function DebtsPage() {
     setPersonDebts(sortPersonDebts(personItems, 'asc', 'date'));
     setPersonSort('asc');
     setPersonSortBy('date');
+    
+    // ═══ گرفتن اقساط این شخص (اول با کد ملی، اگه نبود با نام) ═══
+    setPersonPlans([]);
+    const nid = mergedPerson.person_national_id;
+    const nidQ = nid ? `national_id=${encodeURIComponent(nid)}` : '';
+    const nameQ = `person_name=${encodeURIComponent(personName)}`;
+    const shopQ = selectedShop !== 'all' ? `shop_id=${selectedShop}` : '';
+    
+    let params;
+    if (nid) {
+      params = [nidQ, shopQ].filter(Boolean).join('&');
+    } else {
+      params = [nameQ, shopQ].filter(Boolean).join('&');
+    }
+    api.get(`/shops/installments/person/?${params}`)
+      .then(res => setPersonPlans(res.data.plans || []))
+      .catch(() => setPersonPlans([]));
   };
   
   const fetchDebts = async () => {
@@ -469,7 +491,9 @@ export default function DebtsPage() {
     
     // چک نهایی با توابع
     const phoneErr = validatePhone(personPhone);
-    const nidErr = validateNationalId(personNationalId);
+    // کد ملی اجباری
+    let nidErr = validateNationalId(personNationalId);
+    if (!personNationalId) nidErr = 'کد ملی الزامی است';
     const pcErr = validatePostalCode(personPostalCode);
     const cardErr = debtType === 'creditor' ? validateCardNumber(cardNumber) : '';
     const shebaErr = debtType === 'creditor' ? validateSheba(shebaNumber) : '';
@@ -1046,7 +1070,6 @@ export default function DebtsPage() {
         <div className="bg-white rounded-xl border shadow-sm mb-4 p-3">
           <div className="flex gap-1 mb-3 overflow-x-auto">
             {[
-              { id: 'date', label: '📅 تاریخ' },
               { id: 'persons', label: '👥 اشخاص' },
               { id: 'due', label: '⏰ زمان سررسید' },
             ].map(t => (
@@ -1058,21 +1081,6 @@ export default function DebtsPage() {
           </div>
           
           {/* فیلتر تاریخ */}
-          {filterTab === 'date' && (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <button onClick={() => openPicker('filter_from')} className={`text-[10px] px-2 py-1 rounded-md flex items-center gap-1 ${dateFrom ? 'bg-fuchsia-500 text-white' : 'bg-white border'}`}>
-                {dateFrom || 'از تاریخ'}
-              </button>
-              <button onClick={() => openPicker('filter_to')} className={`text-[10px] px-2 py-1 rounded-md flex items-center gap-1 ${dateTo ? 'bg-fuchsia-500 text-white' : 'bg-white border'}`}>
-                {dateTo || 'تا تاریخ'}
-              </button>
-              {(dateFrom || dateTo) && (
-                <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-[10px] text-red-500">✕</button>
-              )}
-            </div>
-          )}
-          
-          {/* فیلتر اشخاص */}
           {filterTab === 'persons' && (
             <div>
               <div className="relative mb-2">
@@ -1131,7 +1139,7 @@ export default function DebtsPage() {
                   </div>
                 )}
               </div>
-              <div className="flex gap-1 mb-2">
+              <div className="flex items-center gap-1 mb-2 flex-wrap">
                 {[
                   { id: 'all', label: 'همه' },
                   { id: 'debtor', label: '🔴 بدهکار' },
@@ -1142,6 +1150,38 @@ export default function DebtsPage() {
                     {t.label}
                   </button>
                 ))}
+                
+                <div className="mr-auto flex items-center gap-1">
+                  {/* سورت تاریخ سررسید */}
+                  <div className="flex items-center bg-gray-100 rounded-md overflow-hidden">
+                    <span className="text-[9px] px-1.5 text-gray-600">سررسید</span>
+                    <button 
+                      onClick={() => { setPersonSortField('date'); setPersonSortDir('asc'); }}
+                      className={`text-[10px] px-1.5 py-1 ${personSortField === 'date' && personSortDir === 'asc' ? 'bg-fuchsia-500 text-white' : 'text-gray-600 hover:bg-gray-200'}`}
+                      title="سررسید صعودی"
+                    >▲</button>
+                    <button 
+                      onClick={() => { setPersonSortField('date'); setPersonSortDir('desc'); }}
+                      className={`text-[10px] px-1.5 py-1 ${personSortField === 'date' && personSortDir === 'desc' ? 'bg-fuchsia-500 text-white' : 'text-gray-600 hover:bg-gray-200'}`}
+                      title="سررسید نزولی"
+                    >▼</button>
+                  </div>
+                  
+                  {/* سورت مبلغ */}
+                  <div className="flex items-center bg-gray-100 rounded-md overflow-hidden">
+                    <span className="text-[9px] px-1.5 text-gray-600">مبلغ</span>
+                    <button 
+                      onClick={() => { setPersonSortField('amount'); setPersonSortDir('asc'); }}
+                      className={`text-[10px] px-1.5 py-1 ${personSortField === 'amount' && personSortDir === 'asc' ? 'bg-fuchsia-500 text-white' : 'text-gray-600 hover:bg-gray-200'}`}
+                      title="مبلغ صعودی"
+                    >▲</button>
+                    <button 
+                      onClick={() => { setPersonSortField('amount'); setPersonSortDir('desc'); }}
+                      className={`text-[10px] px-1.5 py-1 ${personSortField === 'amount' && personSortDir === 'desc' ? 'bg-fuchsia-500 text-white' : 'text-gray-600 hover:bg-gray-200'}`}
+                      title="مبلغ نزولی"
+                    >▼</button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -1313,7 +1353,7 @@ export default function DebtsPage() {
               </div>
               
               <div>
-                <label className="text-[9px] text-gray-400 mb-0.5 block">🆔 کد ملی</label>
+                <label className="text-[9px] text-gray-400 mb-0.5 block">🆔 کد ملی <span className="text-red-500">*</span></label>
                 <input 
                   value={personNationalId} 
                   onChange={e => {
@@ -1854,14 +1894,19 @@ export default function DebtsPage() {
               return acc;
             }, {}))
             .sort((a, b) => {
-              // مرتب‌سازی بر اساس سررسید
-              if (a.earliestDue && !b.earliestDue) return -1;
-              if (!a.earliestDue && b.earliestDue) return 1;
-              if (a.earliestDue && b.earliestDue) {
-                return parseInt(a.earliestDue.replace(/\//g, '')) - parseInt(b.earliestDue.replace(/\//g, ''));
+              if (personSortField === 'date') {
+                const getDate = (p) => {
+                  if (p.earliestDue) return parseInt(p.earliestDue.replace(/\//g, ''));
+                  return 99999999;
+                };
+                const diff = getDate(a) - getDate(b);
+                return personSortDir === 'asc' ? diff : -diff;
+              } else {
+                const balA = Math.abs(a.debtor - a.creditor);
+                const balB = Math.abs(b.debtor - b.creditor);
+                const diff = balA - balB;
+                return personSortDir === 'asc' ? diff : -diff;
               }
-              // اگه هیچ‌کدوم سررسید نداشتن، بر اساس نام
-              return a.name.localeCompare(b.name, 'fa');
             })
             .map((person, idx) => {
               const balance = person.debtor - person.creditor;
@@ -1946,6 +1991,24 @@ export default function DebtsPage() {
                 </button>
               </div>
             </div>
+            
+            {/* ═══ سطر توضیح اقساط ═══ */}
+            {personPlans.length > 0 && (
+              <button 
+                onClick={() => {
+                  setInstallmentPlanTarget(personPlans[0]);
+                  setShowInstallmentModal(true);
+                }}
+                className="w-full flex items-center gap-2 p-2 bg-indigo-50 border-b border-indigo-100 hover:bg-indigo-100 transition-all text-right"
+              >
+                <span className="text-base">💳</span>
+                <span className="text-[10px] text-indigo-700 font-bold">
+                  خرید قسطی: {personPlans[0].total_installments} قسط به مبلغ {Number(personPlans[0].total_amount).toLocaleString('fa-IR')} تومان
+                  {personPlans[0].paid_count > 0 && ` (${personPlans[0].paid_count} پرداخت شده)`}
+                </span>
+                <span className="mr-auto text-indigo-400">←</span>
+              </button>
+            )}
 
 
             {/* جدول تراکنش‌ها */}
@@ -2105,6 +2168,72 @@ export default function DebtsPage() {
       {/* ═══════════════════════════════════════════════
           مودال تسویه جزئی
       ═══════════════════════════════════════════════ */}
+      {/* ═══════════════════════════════════════════════
+          مودال نمایش اقساط
+      ═══════════════════════════════════════════════ */}
+      {showInstallmentModal && installmentPlanTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3" onClick={() => { setShowInstallmentModal(false); setInstallmentPlanTarget(null); }}>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* هدر */}
+            <div className="flex items-center justify-between p-3 bg-gradient-to-l from-indigo-500 to-indigo-600">
+              <h3 className="font-bold text-white text-sm">💳 {installmentPlanTarget.person_name}</h3>
+              <button onClick={() => { setShowInstallmentModal(false); setInstallmentPlanTarget(null); }} className="text-white"><X size={18} /></button>
+            </div>
+            
+            {/* اطلاعات */}
+            <div className="p-3 bg-gray-50 border-b space-y-1 text-[10px]">
+              <div className="flex justify-between"><span className="text-gray-500">📱 موبایل:</span><span className="font-bold">{installmentPlanTarget.person_phone}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">💰 مبلغ کل:</span><span className="font-bold text-indigo-600">{Number(installmentPlanTarget.total_amount).toLocaleString('fa-IR')}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">🔢 تعداد:</span><span>{installmentPlanTarget.total_installments} قسط</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">💳 پرداخت:</span><span>{installmentPlanTarget.payment_method_display}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">📋 تضمین:</span><span>{installmentPlanTarget.guarantee_display}</span></div>
+            </div>
+            
+            {/* لیست اقساط */}
+            <div className="overflow-y-auto flex-1 p-3">
+              <table className="w-full text-[10px]">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="p-2 text-center w-8">#</th>
+                    <th className="p-2 text-center">سررسید</th>
+                    <th className="p-2 text-center">مبلغ</th>
+                    <th className="p-2 text-center">وضعیت</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {installmentPlanTarget.installments?.map((inst, idx) => (
+                    <tr key={inst.id || idx} className={'border-b ' + (inst.is_overdue && !inst.is_paid ? 'bg-red-50' : '')}>
+                      <td className="p-2 text-center text-gray-500">{inst.number}</td>
+                      <td className={'p-2 text-center ' + (inst.is_overdue && !inst.is_paid ? 'text-red-500 animate-pulse font-bold' : '')}>
+                        {inst.due_date_shamsi}
+                      </td>
+                      <td className={'p-2 text-center font-bold ' + (inst.is_paid ? 'text-green-600' : 'text-gray-700')}>
+                        {Number(inst.amount).toLocaleString('fa-IR')}
+                      </td>
+                      <td className="p-2 text-center">
+                        {inst.is_paid ? (
+                          <span className="text-green-600 font-bold text-[9px]">✅ پرداخت شده</span>
+                        ) : (
+                          <span className="text-gray-400 text-[9px]">⚪ در انتظار</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-indigo-50">
+                  <tr>
+                    <td colSpan="2" className="p-2 text-left font-bold text-indigo-700">جمع پرداخت‌شده:</td>
+                    <td colSpan="2" className="p-2 text-center font-extrabold text-green-600">
+                      {Number(installmentPlanTarget.total_paid || 0).toLocaleString('fa-IR')} / {Number(installmentPlanTarget.total_amount).toLocaleString('fa-IR')}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* ═══════════════════════════════════════════════
           مودال تسویه گروهی
       ═══════════════════════════════════════════════ */}

@@ -1,6 +1,8 @@
-from . import views_marketplace
-from django.urls import path
 from . import views
+from django.urls import path
+from .installment_summary import installment_shop_summary
+from . import installments_views
+from . import views_marketplace
 
 urlpatterns = [
     # Shop URLs
@@ -70,6 +72,17 @@ urlpatterns += [
     path('debts/<int:debt_id>/payments/', views.list_payments, name='list-payments'),
     path('debts/<int:debt_id>/payments/create/', views.create_payment, name='create-payment'),
     path('debts/payments/<int:payment_id>/delete/', views.delete_payment, name='delete-payment'),
+    # اقساط
+    path('installments/', installments_views.list_installment_plans, name='list-installments'),
+    path('installments/shop-summary/', installment_shop_summary, name='installment-shop-summary'),
+    path('installments/create/', installments_views.create_installment_plan, name='create-installment'),
+    path('installments/calculate/', installments_views.calculate_installments, name='calculate-installments'),
+    path('installments/person/', installments_views.get_person_installments, name='person-installments'),
+    path('installments/<int:installment_id>/toggle/', installments_views.toggle_installment_paid, name='toggle-installment'),
+    path('installments/<int:plan_id>/delete/', installments_views.delete_installment_plan, name='delete-installment'),
+    path('installments/<int:installment_id>/update-amount/', installments_views.update_installment_amount, name='update-installment-amount'),
+    path('installments/<int:plan_id>/update-person/', installments_views.update_plan_person, name='update-plan-person'),
+
 
 
 ]

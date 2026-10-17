@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Shop, Product, SellerExpense, SellerDebt, DebtPayment
+from .models import Shop, Product, SellerExpense, SellerDebt, DebtPayment, InstallmentPlan, Installment
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -277,3 +277,71 @@ class DebtPaymentSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         read_only_fields = ['id', 'created_at']
+
+class InstallmentSerializer(serializers.ModelSerializer):
+    """سریالایزر قسط"""
+    
+    due_date_shamsi = serializers.SerializerMethodField()
+    paid_date_shamsi = serializers.SerializerMethodField()
+    is_overdue = serializers.BooleanField(read_only=True)
+    
+    def get_due_date_shamsi(self, obj):
+        if not obj.due_date:
+            return ''
+        try:
+            import jdatetime
+            jd = jdatetime.date.fromgregorian(date=obj.due_date)
+            return f"{jd.year}/{jd.month:02d}/{jd.day:02d}"
+        except:
+            return str(obj.due_date)
+    
+    def get_paid_date_shamsi(self, obj):
+        if not obj.paid_date:
+            return ''
+        try:
+            import jdatetime
+            jd = jdatetime.date.fromgregorian(date=obj.paid_date)
+            return f"{jd.year}/{jd.month:02d}/{jd.day:02d}"
+        except:
+            return str(obj.paid_date)
+    
+    class Meta:
+        model = Installment
+        fields = [
+            'id', 'number', 'amount',
+            'due_date', 'due_date_shamsi',
+            'is_paid', 'paid_date', 'paid_date_shamsi',
+            'is_overdue',
+        ]
+        read_only_fields = ['id']
+
+
+class InstallmentPlanSerializer(serializers.ModelSerializer):
+    """سریالایزر طرح اقساط"""
+    
+    installments = InstallmentSerializer(many=True, read_only=True)
+    shop_name = serializers.CharField(source='shop.name', read_only=True)
+    plan_type_display = serializers.CharField(source='get_plan_type_display', read_only=True)
+    payment_method_display = serializers.CharField(source='get_payment_method_display', read_only=True)
+    guarantee_display = serializers.CharField(source='get_guarantee_display', read_only=True)
+    
+    paid_count = serializers.IntegerField(read_only=True)
+    total_paid = serializers.FloatField(read_only=True)
+    total_installments = serializers.IntegerField(read_only=True)
+    
+    class Meta:
+        model = InstallmentPlan
+        fields = [
+            'id', 'shop', 'shop_name',
+            'person_name', 'person_phone', 'person_national_id',
+            'person_postal_code', 'person_address',
+            'plan_type', 'plan_type_display',
+            'total_amount', 'installment_count', 'payment_day',
+            'payment_method', 'payment_method_display',
+            'guarantee', 'guarantee_display',
+            'notes',
+            'check_serial', 'check_notes', 'guarantee_serial', 'guarantee_notes',
+            'installments', 'paid_count', 'total_paid', 'total_installments',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'seller']

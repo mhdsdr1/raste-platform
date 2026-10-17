@@ -1,0 +1,46 @@
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema
+
+@extend_schema(description='خلاصه اقساط به تفکیک فروشگاه')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def installment_shop_summary(request):
+    from .models import InstallmentPlan, Shop, Installment
+    from django.db.models import Sum
+    from django.utils import timezone
+    
+    shops = Shop.objects.filter(owner=request.user)
+    result = []
+    
+    for shop in shops:
+        plans = InstallmentPlan.objects.filter(seller=request.user, shop=shop)
+        if not plans.exists():
+            continue
+        
+        total_amount = plans.aggregate(s=Sum('total_amount'))['s'] or 0
+        unique_persons = plans.values('person_national_id').distinct().count()
+        
+        paid_amount = Installment.objects.filter(
+            plan__in=plans, is_paid=True
+        ).aggregate(s=Sum('amount'))['s'] or 0
+        
+        overdue_amount = Installment.objects.filter(
+            plan__in=plans, is_paid=False, due_date__lt=timezone.now().date()
+        ).aggregate(s=Sum('amount'))['s'] or 0
+        
+        unpaid_amount = float(total_amount) - float(paid_amount)
+        
+        result.append({
+            'shop_id': shop.id,
+            'shop_name': shop.name,
+            'total_amount': float(total_amount),
+            'paid_amount': float(paid_amount),
+            'unpaid_amount': unpaid_amount,
+            'overdue_amount': float(overdue_amount),
+            'persons_count': unique_persons,
+            'plans_count': plans.count(),
+        })
+    
+    return Response({'shops': result})

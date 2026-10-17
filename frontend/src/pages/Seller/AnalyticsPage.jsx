@@ -222,6 +222,9 @@ export default function AnalyticsPage() {
             <button onClick={() => { setShowDebts(true); fetchDebts(); }} className="text-xs bg-fuchsia-500 hover:bg-fuchsia-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
               <Users size={12} /> بدهکاران/بستانکاران
             </button>
+            <Link to={`/seller/installments${selectedShop !== 'all' ? `?shop=${selectedShop}` : ''}`} className="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
+              💳 خرید اقساطی
+            </Link>
           </div>
         </div>
 

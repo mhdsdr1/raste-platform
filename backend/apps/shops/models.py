@@ -351,3 +351,124 @@ class DebtPayment(models.Model):
     
     def __str__(self):
         return f"{self.debt.person_name} - {self.amount} ({self.get_payment_method_display()})"
+
+class InstallmentPlan(models.Model):
+    """طرح خرید اقساطی"""
+    
+    PLAN_TYPE_CHOICES = [
+        ('regular', 'اقساط منظم'),
+        ('custom', 'اقساط دلخواه'),
+    ]
+    
+    PAYMENT_METHOD_CHOICES = [
+        ('check', 'چک'),
+        ('cash', 'نقد'),
+        ('other', 'سایر'),
+    ]
+    
+    GUARANTEE_CHOICES = [
+        ('check', 'چک'),
+        ('surety', 'سفته'),
+        ('other', 'سایر'),
+    ]
+    
+    seller = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='installment_plans',
+        verbose_name='فروشنده'
+    )
+    shop = models.ForeignKey(
+        'shops.Shop',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='installment_plans',
+        verbose_name='فروشگاه'
+    )
+    
+    # اطلاعات شخص
+    person_name = models.CharField(max_length=100, verbose_name='نام')
+    person_phone = models.CharField(max_length=15, verbose_name='موبایل')
+    person_national_id = models.CharField(max_length=10, blank=True, default='', verbose_name='کد ملی')
+    person_postal_code = models.CharField(max_length=10, blank=True, default='', verbose_name='کد پستی')
+    person_address = models.TextField(blank=True, default='', verbose_name='آدرس')
+    
+    # نوع طرح
+    plan_type = models.CharField(max_length=20, choices=PLAN_TYPE_CHOICES, default='regular')
+    
+    # اقساط منظم
+    total_amount = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True, verbose_name='مبلغ کل')
+    installment_count = models.IntegerField(null=True, blank=True, verbose_name='تعداد اقساط')
+    payment_day = models.CharField(max_length=10, blank=True, default='last', verbose_name='روز سررسید')
+    
+    # پرداخت و تضمینات
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='check', verbose_name='نحوه پرداخت')
+    guarantee = models.CharField(max_length=20, choices=GUARANTEE_CHOICES, default='check', verbose_name='تضمینات')
+    
+    notes = models.TextField(blank=True, default='', verbose_name='توضیحات')
+    
+    # اطلاعات چک پرداخت
+    check_serial = models.CharField(max_length=50, blank=True, default='', verbose_name='سریال چک پرداخت')
+    check_notes = models.TextField(blank=True, default='', verbose_name='شرح چک پرداخت')
+    
+    # اطلاعات تضمینات
+    guarantee_serial = models.CharField(max_length=50, blank=True, default='', verbose_name='سریال تضمین')
+    guarantee_notes = models.TextField(blank=True, default='', verbose_name='شرح تضمین')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = 'طرح اقساط'
+        verbose_name_plural = 'طرح‌های اقساط'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.person_name} - {self.installments.count()} قسط"
+    
+    @property
+    def paid_count(self):
+        return self.installments.filter(is_paid=True).count()
+    
+    @property
+    def total_paid(self):
+        from django.db.models import Sum
+        return float(self.installments.filter(is_paid=True).aggregate(t=Sum('amount'))['t'] or 0)
+    
+    @property
+    def total_installments(self):
+        return self.installments.count()
+
+
+class Installment(models.Model):
+    """قسط"""
+    
+    plan = models.ForeignKey(
+        InstallmentPlan,
+        on_delete=models.CASCADE,
+        related_name='installments',
+        verbose_name='طرح اقساط'
+    )
+    number = models.IntegerField(verbose_name='شماره قسط')
+    amount = models.DecimalField(max_digits=12, decimal_places=0, verbose_name='مبلغ')
+    due_date = models.DateField(verbose_name='سررسید')
+    
+    # وضعیت
+    is_paid = models.BooleanField(default=False, verbose_name='پرداخت شده')
+    paid_date = models.DateField(null=True, blank=True, verbose_name='تاریخ پرداخت')
+    
+    class Meta:
+        verbose_name = 'قسط'
+        verbose_name_plural = 'اقساط'
+        ordering = ['number']
+    
+    def __str__(self):
+        return f"قسط {self.number} - {self.amount}"
+    
+    @property
+    def is_overdue(self):
+        """سررسید گذشته"""
+        from django.utils import timezone
+        if self.is_paid:
+            return False
+        return self.due_date < timezone.now().date()
