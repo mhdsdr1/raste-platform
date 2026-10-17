@@ -65,6 +65,22 @@ export default function DebtsPage() {
   const [showSettleDatePicker, setShowSettleDatePicker] = useState(false);
   const [settlePayments, setSettlePayments] = useState([]);
   const [personPlans, setPersonPlans] = useState([]);
+  const [showEditPersonInfo, setShowEditPersonInfo] = useState(false);
+  const [editInfoName, setEditInfoName] = useState('');
+  const [editInfoPhone, setEditInfoPhone] = useState('');
+  const [editInfoNid, setEditInfoNid] = useState('');
+  const [editInfoPc, setEditInfoPc] = useState('');
+  const [editInfoAddr, setEditInfoAddr] = useState('');
+  const [editInfoErrors, setEditInfoErrors] = useState({});
+  const [editInfoCard, setEditInfoCard] = useState('');
+  const [editInfoSheba, setEditInfoSheba] = useState('');
+  const [editInfoBankName, setEditInfoBankName] = useState('');
+  const [showQuickEdit, setShowQuickEdit] = useState(false);
+  const [quickEditDebt, setQuickEditDebt] = useState(null);
+  const [quickAmount, setQuickAmount] = useState('');
+  const [quickDate, setQuickDate] = useState('');
+  const [quickDueDate, setQuickDueDate] = useState('');
+  const [quickNotes, setQuickNotes] = useState('');
   const [showInstallmentModal, setShowInstallmentModal] = useState(false);
   const [installmentPlanTarget, setInstallmentPlanTarget] = useState(null);
   const [txSettleTarget, setTxSettleTarget] = useState(null);
@@ -601,26 +617,13 @@ export default function DebtsPage() {
   };
   
   const handleEdit = (debt) => {
-    setEditingId(debt.id);
-    setDebtType(debt.debt_type);
-    setPersonName(debt.person_name);
-    setPersonPhone(debt.person_phone);
-    setPersonNationalId(debt.person_national_id || '');
-    setPersonAddress(debt.person_address || '');
-    setPersonPostalCode(debt.person_postal_code || '');
-    setBankName(debt.bank_name || '');
-    setFormShop(debt.shop || (selectedShop !== 'all' ? selectedShop : ''));
-    setCardNumber(debt.card_number || '');
-    setShebaNumber(debt.sheba_number || '');
-    setAmount(debt.amount);
-    setAmountDisplay(Number(debt.amount).toLocaleString('fa-IR'));
-    // ═══ استفاده از تاریخ شمسی ═══
-    setTransactionDate(debt.transaction_date_shamsi || debt.transaction_date);
-    setDueDate(debt.due_date_shamsi || debt.due_date || '');
-    setPaymentType(debt.payment_type);
-    setNotes(debt.notes || '');
-    setErrors({ phone: '', nationalId: '', postalCode: '', cardNumber: '', sheba: '' });
-    setShowForm(true);
+    // ═══ باز کردن مودال ویرایش سریع ═══
+    setQuickEditDebt(debt);
+    setQuickAmount(String(debt.amount || ''));
+    setQuickDate(debt.transaction_date_shamsi || debt.transaction_date || '');
+    setQuickDueDate(debt.due_date_shamsi || debt.due_date || '');
+    setQuickNotes(debt.notes || '');
+    setShowQuickEdit(true);
   };
   
   const handleDelete = async (id) => {
@@ -1952,14 +1955,28 @@ export default function DebtsPage() {
                     ? 'bg-gradient-to-l from-red-500 to-red-600' 
                     : 'bg-gradient-to-l from-blue-500 to-blue-600'
                 }`}>
-                  <h2 className="font-bold text-white text-sm flex items-center gap-3 flex-1">
+                  <button 
+                    onClick={() => {
+                      setEditInfoName(selectedPerson.person_name || '');
+                      setEditInfoPhone(selectedPerson.person_phone || '');
+                      setEditInfoNid(selectedPerson.person_national_id || '');
+                      setEditInfoPc(selectedPerson.person_postal_code || '');
+                      setEditInfoAddr(selectedPerson.person_address || '');
+                      setEditInfoCard(selectedPerson.card_number || '');
+                      setEditInfoSheba(selectedPerson.sheba_number || '');
+                      setEditInfoBankName(selectedPerson.bank_name || '');
+                      setEditInfoErrors({});
+                      setShowEditPersonInfo(true);
+                    }}
+                    className="font-bold text-white text-sm flex items-center gap-3 flex-1 hover:underline text-right"
+                  >
                     <span>
                       {isDebtor ? '🔴' : '🔵'} {selectedPerson.person_name}
                     </span>
                     <span className="text-[12px] bg-white/20 px-2 py-0.5 rounded-lg font-mono font-bold">
                       📱 {selectedPerson.person_phone}
                     </span>
-                  </h2>
+                  </button>
                   <button onClick={() => setSelectedPerson(null)} className="text-white"><X size={18} /></button>
                 </div>
               );
@@ -2122,7 +2139,18 @@ export default function DebtsPage() {
                           })()}
                           
                           {/* ویرایش */}
-                          <button onClick={() => { setSelectedPerson(null); handleEdit(d); }} className="text-blue-500 hover:bg-blue-50 p-1 rounded">
+                          <button 
+                            onClick={() => {
+                              setQuickEditDebt(d);
+                              setQuickAmount(String(d.amount || ''));
+                              setQuickDate(d.transaction_date_shamsi || '');
+                              setQuickDueDate(d.due_date_shamsi || '');
+                              setQuickNotes(d.notes || '');
+                              setShowQuickEdit(true);
+                            }}
+                            className="text-blue-500 hover:bg-blue-50 p-1 rounded"
+                            title="ویرایش مبلغ/تاریخ/شرح"
+                          >
                             <Edit2 size={12} />
                           </button>
                           
@@ -2563,6 +2591,280 @@ export default function DebtsPage() {
                 </>
               );
             })()}
+          </div>
+        </div>
+      )}
+      
+      {/* ═══════════════════════════════════════════════
+          مودال ویرایش مشخصات فرد
+      ═══════════════════════════════════════════════ */}
+      {showEditPersonInfo && selectedPerson && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-3" onClick={() => setShowEditPersonInfo(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 bg-gradient-to-l from-fuchsia-500 to-fuchsia-600">
+              <h3 className="font-bold text-white text-sm">✏️ ویرایش مشخصات</h3>
+              <button onClick={() => setShowEditPersonInfo(false)} className="text-white"><X size={18} /></button>
+            </div>
+            <div className="p-3 overflow-y-auto flex-1 space-y-2">
+              <div>
+                <label className="text-[10px] text-gray-500 mb-0.5 block">👤 نام *</label>
+                <input 
+                  value={editInfoName} 
+                  onChange={e => {
+                    setEditInfoName(e.target.value);
+                    if (editInfoErrors.name) setEditInfoErrors({...editInfoErrors, name: ''});
+                  }}
+                  className={`w-full px-2 py-1.5 border rounded-lg text-xs ${editInfoErrors.name ? 'border-red-400 bg-red-50' : ''}`} 
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 mb-0.5 block">📱 موبایل *</label>
+                <input 
+                  value={editInfoPhone} 
+                  onChange={e => {
+                    const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 11);
+                    setEditInfoPhone(v);
+                    if (editInfoErrors.phone) setEditInfoErrors({...editInfoErrors, phone: ''});
+                  }}
+                  className={`w-full px-2 py-1.5 border rounded-lg text-xs ${editInfoErrors.phone ? 'border-red-400 bg-red-50' : ''}`} 
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 mb-0.5 block">🆔 کد ملی *</label>
+                <input 
+                  value={editInfoNid} 
+                  onChange={e => {
+                    const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 10);
+                    setEditInfoNid(v);
+                    if (editInfoErrors.nid) setEditInfoErrors({...editInfoErrors, nid: ''});
+                  }}
+                  className={`w-full px-2 py-1.5 border rounded-lg text-xs ${editInfoErrors.nid ? 'border-red-400 bg-red-50' : ''}`} 
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 mb-0.5 block">📮 کد پستی</label>
+                <input 
+                  value={editInfoPc} 
+                  onChange={e => setEditInfoPc(e.target.value.replace(/[^0-9]/g, '').slice(0, 10))}
+                  className="w-full px-2 py-1.5 border rounded-lg text-xs" 
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 mb-0.5 block">🏠 آدرس</label>
+                <textarea 
+                  value={editInfoAddr} 
+                  onChange={e => setEditInfoAddr(e.target.value)}
+                  rows={2}
+                  className="w-full px-2 py-1.5 border rounded-lg text-xs resize-none" 
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 mb-0.5 block">💳 شماره کارت</label>
+                <input 
+                  type="text"
+                  dir="ltr"
+                  value={editInfoCard} 
+                  onChange={e => {
+                    const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 16);
+                    setEditInfoCard(v);
+                    // تشخیص خودکار بانک
+                    if (v.length >= 6) {
+                      const banksByCard = {
+                        '603799': 'بانک ملی', '610433': 'بانک ملت', '627412': 'اقتصاد نوین',
+                        '627381': 'انصار', '505785': 'ایران زمین', '636214': 'آینده',
+                        '627648': 'توسعه صادرات', '627760': 'پست بانک', '502908': 'توسعه تعاون',
+                        '622106': 'پارسیان', '502229': 'پاسارگاد', '639347': 'پاسارگاد',
+                        '627884': 'دی', '639346': 'سینا', '627353': 'صادرات', '603769': 'صادرات',
+                        '502806': 'شهر', '504706': 'شهر', '603786': 'سامان', '621986': 'سامان',
+                        '639607': 'سپه', '589210': 'سپه', '639370': 'مهر ایران', '628023': 'مسکن',
+                        '627961': 'صنعت و معدن', '639217': 'کشاورزی', '603770': 'کشاورزی',
+                        '628157': 'قوامین', '639599': 'قوامین', '585983': 'رسالت',
+                        '504172': 'مهر', '606373': 'مهر', '636795': 'مرکزی',
+                      };
+                      setEditInfoBankName(banksByCard[v.substring(0, 6)] || '');
+                    }
+                  }}
+                  placeholder="۱۶ رقم"
+                  maxLength={16}
+                  className="w-full px-2 py-1.5 border rounded-lg text-xs text-left" 
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 mb-0.5 block">🔢 شماره شبا</label>
+                <input 
+                  type="text"
+                  dir="ltr"
+                  value={editInfoSheba} 
+                  onChange={e => {
+                    const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 24);
+                    setEditInfoSheba(v);
+                    // تشخیص خودکار بانک از شبا
+                    if (v.length >= 3) {
+                      const banksBySheba = {
+                        '017': 'بانک ملی', '012': 'بانک ملت', '018': 'بانک تجارت',
+                        '013': 'بانک رفاه', '015': 'بانک صادرات', '016': 'بانک کشاورزی',
+                        '019': 'بانک صادرات', '011': 'بانک صنعت و معدن', '021': 'پست بانک',
+                        '054': 'بانک پارسیان', '057': 'بانک پاسارگاد', '058': 'بانک سامان',
+                        '059': 'بانک سینا', '061': 'بانک شهر', '062': 'بانک آینده',
+                        '063': 'اقتصاد نوین', '055': 'بانک سپه', '056': 'بانک مسکن',
+                      };
+                      setEditInfoBankName(banksBySheba[v.substring(0, 3)] || '');
+                    }
+                  }}
+                  placeholder="۲۴ رقم بدون IR"
+                  maxLength={24}
+                  className="w-full px-2 py-1.5 border rounded-lg text-xs text-left" 
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 mb-0.5 block">🏦 نام بانک (خودکار)</label>
+                <input 
+                  value={editInfoBankName} 
+                  readOnly
+                  placeholder="خودکار پر میشه"
+                  className="w-full px-2 py-1.5 border rounded-lg text-xs bg-gray-50 text-gray-600 cursor-not-allowed" 
+                />
+              </div>
+            </div>
+            <div className="p-3 border-t bg-gray-50 flex gap-2">
+              <button 
+                onClick={async () => {
+                  // validation
+                  const nameErr = editInfoName.trim().length < 2 ? 'نام حداقل ۲ حرف' : '';
+                  const phoneErr = !/^09[0-9]{9}$/.test(editInfoPhone) ? 'موبایل نامعتبر' : '';
+                  let nidErr = '';
+                  if (!editInfoNid) nidErr = 'کد ملی الزامی';
+                  else if (!/^[0-9]{10}$/.test(editInfoNid)) nidErr = 'کد ملی ۱۰ رقم';
+                  
+                  if (nameErr || phoneErr || nidErr) {
+                    setEditInfoErrors({ name: nameErr, phone: phoneErr, nid: nidErr });
+                    return;
+                  }
+                  
+                  try {
+                    // آپدیت همه تراکنش‌های این شخص
+                    const personItems = debts.filter(d => d.person_name === selectedPerson.person_name);
+                    for (const d of personItems) {
+                      await api.patch(`/shops/debts/${d.id}/`, {
+                        person_name: editInfoName,
+                        person_phone: editInfoPhone,
+                        person_national_id: editInfoNid,
+                        person_postal_code: editInfoPc,
+                        person_address: editInfoAddr,
+                        card_number: editInfoCard,
+                        sheba_number: editInfoSheba,
+                        bank_name: editInfoBankName,
+                      });
+                    }
+                    toast.success('مشخصات ذخیره شد');
+                    setShowEditPersonInfo(false);
+                    setSelectedPerson(null);
+                    await fetchDebts();
+                  } catch (e) {
+                    console.error(e);
+                    toast.error('خطا در ذخیره');
+                  }
+                }}
+                className="flex-1 bg-fuchsia-500 text-white py-2 rounded-lg text-xs font-bold"
+              >
+                ✓ ذخیره
+              </button>
+              <button onClick={() => setShowEditPersonInfo(false)} className="bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-xs font-bold">انصراف</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* ═══════════════════════════════════════════════
+          مودال ویرایش سریع
+      ═══════════════════════════════════════════════ */}
+      {showQuickEdit && quickEditDebt && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-3" onClick={() => setShowQuickEdit(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 bg-gradient-to-l from-blue-500 to-blue-600 rounded-t-2xl">
+              <h3 className="font-bold text-white text-sm">✏️ ویرایش تراکنش</h3>
+              <button onClick={() => setShowQuickEdit(false)} className="text-white"><X size={18} /></button>
+            </div>
+            <div className="p-3 space-y-2">
+              <div>
+                <label className="text-[10px] text-gray-500 mb-0.5 block">💰 مبلغ (تومان) *</label>
+                <input 
+                  type="text"
+                  dir="ltr"
+                  value={quickAmount ? Number(quickAmount).toLocaleString('fa-IR') : ''}
+                  onChange={e => {
+                    let v = e.target.value
+                      .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+                      .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+                      .replace(/[^0-9]/g, '');
+                    setQuickAmount(v);
+                  }}
+                  placeholder="تومان"
+                  className="w-full px-2 py-1.5 border rounded-lg text-xs text-left"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 mb-0.5 block">📅 تاریخ ثبت</label>
+                <button 
+                  type="button"
+                  onClick={() => { setPickerTarget('quick_tx_date'); setShowDatePicker(true); }}
+                  className="w-full px-2 py-1.5 border rounded-lg text-xs text-right bg-white hover:border-blue-300"
+                >
+                  📅 {quickDate || 'انتخاب تاریخ'}
+                </button>
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 mb-0.5 block">⏰ سررسید</label>
+                <button 
+                  type="button"
+                  onClick={() => { setPickerTarget('quick_due_date'); setShowDatePicker(true); }}
+                  className="w-full px-2 py-1.5 border rounded-lg text-xs text-right bg-white hover:border-blue-300"
+                >
+                  ⏰ {quickDueDate || 'انتخاب سررسید'}
+                </button>
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 mb-0.5 block">📝 شرح</label>
+                <textarea 
+                  value={quickNotes}
+                  onChange={e => setQuickNotes(e.target.value)}
+                  rows={2}
+                  className="w-full px-2 py-1.5 border rounded-lg text-xs resize-none"
+                />
+              </div>
+            </div>
+            <div className="p-3 border-t bg-gray-50 flex gap-2 rounded-b-2xl">
+              <button 
+                onClick={async () => {
+                  if (!quickAmount || Number(quickAmount) <= 0) {
+                    toast.error('مبلغ الزامی');
+                    return;
+                  }
+                  try {
+                    await api.patch(`/shops/debts/${quickEditDebt.id}/`, {
+                      amount: Number(quickAmount),
+                      transaction_date: quickDate,
+                      due_date: quickDueDate || null,
+                      notes: quickNotes,
+                    });
+                    toast.success('ذخیره شد');
+                    setShowQuickEdit(false);
+                    setQuickEditDebt(null);
+                    await fetchDebts();
+                    if (selectedPerson) {
+                      openPerson(selectedPerson.person_name);
+                    }
+                  } catch (e) {
+                    console.error(e);
+                    toast.error('خطا');
+                  }
+                }}
+                className="flex-1 bg-blue-500 text-white py-2 rounded-lg text-xs font-bold"
+              >
+                ✓ ذخیره
+              </button>
+              <button onClick={() => setShowQuickEdit(false)} className="bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-xs font-bold">انصراف</button>
+            </div>
           </div>
         </div>
       )}
