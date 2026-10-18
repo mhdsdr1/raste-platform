@@ -169,6 +169,10 @@ export default function DebtsPage() {
       setSettleDate(dateStr);
     } else if (pickerTarget === 'group_settle_date') {
       setGroupSettleDate(dateStr);
+    } else if (pickerTarget === 'quick_tx_date') {
+      setQuickDate(dateStr);
+    } else if (pickerTarget === 'quick_due_date') {
+      setQuickDueDate(dateStr);
     }
     setShowDatePicker(false);
   };
@@ -2850,9 +2854,25 @@ export default function DebtsPage() {
                     toast.success('ذخیره شد');
                     setShowQuickEdit(false);
                     setQuickEditDebt(null);
+                    
+                    // ═══ آپدیت فوری در personDebts ═══
+                    if (selectedPerson) {
+                      const updatedPersonDebts = personDebts.map(x => 
+                        x.id === quickEditDebt.id 
+                          ? { ...x, amount: quickAmount, transaction_date_shamsi: quickDate, due_date_shamsi: quickDueDate, notes: quickNotes, tx_remaining: Number(quickAmount) - Number(x.paid_amount || 0) }
+                          : x
+                      );
+                      setPersonDebts(updatedPersonDebts);
+                    }
+                    
+                    // ═══ رفرش کامل ═══
                     await fetchDebts();
                     if (selectedPerson) {
-                      openPerson(selectedPerson.person_name);
+                      const res = await api.get(`/shops/debts/?shop_id=${selectedShop !== 'all' ? selectedShop : ''}`);
+                      const refreshed = (res.data.debts || []).filter(x => x.person_name === selectedPerson.person_name);
+                      if (refreshed.length > 0) {
+                        setPersonDebts(sortPersonDebts(refreshed, 'asc', 'date'));
+                      }
                     }
                   } catch (e) {
                     console.error(e);
@@ -2871,19 +2891,27 @@ export default function DebtsPage() {
       
       {/* مودال تقویم شمسی */}
       {showDatePicker && (
-        <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-3" onClick={() => setShowDatePicker(false)}>
+        <div className="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-3" onClick={() => setShowDatePicker(false)}>
           <JalaliCalendar
             value={
               pickerTarget === 'transaction' ? transactionDate :
               pickerTarget === 'due' ? dueDate :
               pickerTarget === 'filter_from' ? dateFrom :
-              pickerTarget === 'filter_to' ? dateTo : ''
+              pickerTarget === 'filter_to' ? dateTo :
+              pickerTarget === 'settle_date' ? settleDate :
+              pickerTarget === 'group_settle_date' ? groupSettleDate :
+              pickerTarget === 'quick_tx_date' ? quickDate :
+              pickerTarget === 'quick_due_date' ? quickDueDate : ''
             }
             onChange={(date) => {
               if (pickerTarget === 'transaction') setTransactionDate(date);
               else if (pickerTarget === 'due') setDueDate(date);
               else if (pickerTarget === 'filter_from') setDateFrom(date);
               else if (pickerTarget === 'filter_to') setDateTo(date);
+              else if (pickerTarget === 'settle_date') setSettleDate(date);
+              else if (pickerTarget === 'group_settle_date') setGroupSettleDate(date);
+              else if (pickerTarget === 'quick_tx_date') setQuickDate(date);
+              else if (pickerTarget === 'quick_due_date') setQuickDueDate(date);
               setShowDatePicker(false);
             }}
             theme="fuchsia"
