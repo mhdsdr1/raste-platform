@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+from django.conf import settings
 import random
 
 
@@ -314,3 +315,62 @@ class AbuseLog(models.Model):
             return 'low', '🟡 کم'
         else:
             return 'normal', '🟢 عادی'
+
+class Address(models.Model):
+    """آدرس‌های ذخیره‌شده کاربر"""
+    
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='addresses',
+        verbose_name='کاربر'
+    )
+    title = models.CharField(max_length=50, verbose_name='عنوان')  # خانه، محل کار، ...
+    receiver_name = models.CharField(max_length=100, verbose_name='نام گیرنده')
+    receiver_phone = models.CharField(max_length=15, verbose_name='موبایل گیرنده')
+    province = models.CharField(max_length=50, verbose_name='استان')
+    city = models.CharField(max_length=50, verbose_name='شهر')
+    postal_code = models.CharField(max_length=10, blank=True, default='', verbose_name='کد پستی')
+    full_address = models.TextField(verbose_name='آدرس کامل')
+    is_default = models.BooleanField(default=False, verbose_name='پیش‌فرض')
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = 'آدرس'
+        verbose_name_plural = 'آدرس‌ها'
+        ordering = ['-is_default', '-created_at']
+    
+    def __str__(self):
+        return f"{self.title} - {self.city} ({self.user.phone})"
+    
+    def save(self, *args, **kwargs):
+        # اگه is_default=True، بقیه رو False کن
+        if self.is_default:
+            Address.objects.filter(user=self.user, is_default=True).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+class Favorite(models.Model):
+    """لیست علاقه‌مندی‌های کاربر"""
+    
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='favorites',
+        verbose_name='کاربر'
+    )
+    product = models.ForeignKey(
+        'shops.Product',
+        on_delete=models.CASCADE,
+        related_name='favorites',
+        verbose_name='محصول'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = 'علاقه‌مندی'
+        verbose_name_plural = 'علاقه‌مندی‌ها'
+        ordering = ['-created_at']
+        unique_together = ['user', 'product']  # هر محصول فقط یه بار
+    
+    def __str__(self):
+        return f"{self.user.phone} - {self.product.title}"

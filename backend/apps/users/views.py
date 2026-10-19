@@ -139,19 +139,162 @@ def verify_otp(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def me(request):
+    from .serializers import UserSerializer
     user = request.user
-    return Response({
-        'id': user.id,
-        'phone': user.phone,
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-        'user_type': user.user_type,
-        'subscription_plan': user.subscription_plan,
-        'subscription_expiry': user.subscription_expiry,
-        'subscription_active': user.subscription_active,
-        'monthly_order_limit': user.monthly_order_limit,
-        'monthly_product_limit': user.monthly_product_limit,
-        'monthly_service_limit': user.monthly_service_limit,
-        'is_blocked': user.is_blocked,
-        'is_staff': user.is_staff,
-    })
+    data = UserSerializer(user).data
+    # فیلدهای اشتراک
+    data['subscription_expiry'] = user.subscription_expiry
+    data['subscription_active'] = user.subscription_active
+    data['monthly_order_limit'] = user.monthly_order_limit
+    data['monthly_product_limit'] = user.monthly_product_limit
+    data['monthly_service_limit'] = user.monthly_service_limit
+    data['is_staff'] = user.is_staff
+    return Response(data)
+
+# ═══════════════════════════════════════════════════════════
+# پروفایل خریدار
+# ═══════════════════════════════════════════════════════════
+
+@extend_schema(description='دریافت پروفایل')
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def profile_view(request):
+    """GET: دریافت، PATCH: ویرایش"""
+    from .serializers import UserSerializer
+    
+    if request.method == 'GET':
+        return Response(UserSerializer(request.user).data)
+    
+    try:
+        # آواتار
+        if 'avatar' in request.FILES:
+            request.user.avatar = request.FILES['avatar']
+        
+        # فیلدهای متنی
+        for field in ['first_name', 'last_name', 'email']:
+            if field in request.data:
+                setattr(request.user, field, request.data[field] or '')
+        
+        # national_id — باید None باشه اگه خالی
+        if 'national_id' in request.data:
+            nid = request.data['national_id']
+            if nid and len(str(nid)) == 10:
+                # چک تکراری
+                from .models import User
+                existing = User.objects.filter(national_id=nid).exclude(id=request.user.id).first()
+                if existing:
+                    return Response({'error': 'این کد ملی قبلاً ثبت شده'}, status=status.HTTP_400_BAD_REQUEST)
+                request.user.national_id = nid
+            else:
+                request.user.national_id = None
+        
+        # birthday
+        if 'birthday' in request.data:
+            bd = request.data['birthday']
+            if bd:
+                from datetime import datetime
+                try:
+                    request.user.birthday = datetime.strptime(bd, '%Y-%m-%d').date()
+                except:
+                    pass
+            else:
+                request.user.birthday = None
+        
+        request.user.save()
+        return Response(UserSerializer(request.user).data)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(description='لیست آدرس‌ها')
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def address_list(request):
+    """GET: لیست، POST: افزودن"""
+    from .models import Address
+    from .serializers import AddressSerializer
+    
+    if request.method == 'GET':
+        addresses = Address.objects.filter(user=request.user)
+        return Response(AddressSerializer(addresses, many=True).data)
+    
+    # POST
+    serializer = AddressSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save(user=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(description='ویرایش/حذف آدرس')
+@api_view(['PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def address_detail(request, address_id):
+    from .models import Address
+    from .serializers import AddressSerializer
+    
+    try:
+        address = Address.objects.get(id=address_id, user=request.user)
+    except Address.DoesNotExist:
+        return Response({'error': 'یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'DELETE':
+        address.delete()
+        return Response({'message': 'حذف شد'})
+    
+    # PATCH
+    serializer = AddressSerializer(address, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(description='لیست علاقه‌مندی‌ها')
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def favorite_list(request):
+    """GET: لیست، POST: افزودن"""
+    from .models import Favorite
+    from .serializers import FavoriteSerializer
+    
+    if request.method == 'GET':
+        favorites = Favorite.objects.filter(user=request.user).select_related('product')
+        return Response(FavoriteSerializer(favorites, many=True).data)
+    
+    # POST
+    product_id = request.data.get('product')
+    if not product_id:
+        return Response({'error': 'product الزامی'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    fav, created = Favorite.objects.get_or_create(user=request.user, product_id=product_id)
+    if created:
+        return Response(FavoriteSerializer(fav).data, status=status.HTTP_201_CREATED)
+    return Response({'error': 'قبلاً اضافه شده'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(description='حذف علاقه‌مندی')
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def favorite_delete(request, product_id):
+    from .models import Favorite
+    
+    try:
+        fav = Favorite.objects.get(user=request.user, product_id=product_id)
+        fav.delete()
+        return Response({'message': 'حذف شد'})
+    except Favorite.DoesNotExist:
+        return Response({'error': 'یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@extend_schema(description='اطلاعات کیف پول')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def wallet_info(request):
+    from .models import Wallet
+    from .serializers import WalletSerializer
+    
+    wallet, _ = Wallet.objects.get_or_create(user=request.user)
+    return Response(WalletSerializer(wallet).data)

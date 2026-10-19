@@ -2,6 +2,15 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+
+    # پروفایل
+    path('profile/', views.profile_view, name='profile'),
+    path('addresses/', views.address_list, name='addresses'),
+    path('addresses/<int:address_id>/', views.address_detail, name='address-detail'),
+    path('favorites/', views.favorite_list, name='favorites'),
+    path('favorites/<int:product_id>/', views.favorite_delete, name='favorite-delete'),
+    path('wallet/', views.wallet_info, name='wallet-info'),
+
     # Auth
     path('auth/request-otp/', views.request_otp, name='request-otp'),
     path('auth/verify-otp/', views.verify_otp, name='verify-otp'),
