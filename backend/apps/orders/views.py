@@ -86,6 +86,35 @@ def create_order(request):
     product.stock -= quantity
     product.save(update_fields=['stock'])
     
+    # ═══ نوتیف برای خریدار ═══
+    if customer_user:
+        try:
+            from apps.users.models import Notification
+            Notification.create_notif(
+                user=customer_user,
+                title='سفارش ثبت شد ✅',
+                message=f'سفارش شما برای «{product.title}» با موفقیت ثبت شد. کد رهگیری: {order.tracking_code}',
+                notif_type='order',
+                link=f'/orders',
+                icon='📦',
+            )
+        except Exception as e:
+            print('Notification error:', e)
+    
+    # ═══ نوتیف برای فروشنده ═══
+    try:
+        from apps.users.models import Notification
+        Notification.create_notif(
+            user=product.shop.owner,
+            title='سفارش جدید 🎉',
+            message=f'سفارش جدید برای «{product.title}» به مبلغ {total_price} تومان ثبت شد.',
+            notif_type='order',
+            link=f'/seller/orders',
+            icon='🛒',
+        )
+    except Exception as e:
+        print('Notification error:', e)
+    
     return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
 

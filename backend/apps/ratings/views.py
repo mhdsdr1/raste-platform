@@ -228,6 +228,37 @@ def report_rating(request, rating_id):
     from .models import RatingReport
     RatingReport.objects.create(rating=rating, reporter=request.user, reason=reason)
     
+    # ═══ نوتیف برای فروشنده ═══
+    try:
+        from apps.users.models import Notification
+        # صاحب فروشگاه
+        shop_owner = rating.product.shop.owner
+        Notification.create_notif(
+            user=shop_owner,
+            title='⚠️ گزارش نظر',
+            message=f'یک نظر برای محصول «{rating.product.title}» گزارش شد. دلیل: {reason}',
+            notif_type='alert',
+            link='/seller/ratings',
+            icon='⚠️',
+        )
+    except Exception as e:
+        print('Seller notif error:', e)
+    
+    # ═══ نوتیف برای ادمین‌ها ═══
+    try:
+        from apps.users.models import Notification, User
+        for admin in User.objects.filter(is_staff=True):
+            Notification.create_notif(
+                user=admin,
+                title='⚠️ گزارش نظر جدید',
+                message=f'گزارش جدید از {request.user.phone} - محصول: {rating.product.title} - دلیل: {reason}',
+                notif_type='alert',
+                link='/admin/ratings/reports',
+                icon='⚠️',
+            )
+    except Exception as e:
+        print('Admin notif error:', e)
+    
     return Response({'message': 'گزارش شما ثبت شد. مدیر بررسی خواهد کرد.'})
 
 

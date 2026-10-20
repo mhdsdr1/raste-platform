@@ -7,6 +7,7 @@ import {
   ShoppingBag, Clock, CheckCircle, XCircle, BarChart3
 } from 'lucide-react';
 import api from '../../services/api';
+import JalaliCalendar from '../../components/JalaliCalendar';
 import { IRAN_PROVINCES, getCitiesForProvince } from '../../utils/iranLocations';
 import { toast } from 'sonner';
 import useAuthStore from '../../store/authStore';
@@ -27,6 +28,7 @@ export default function DashboardPage() {
   const [addressForm, setAddressForm] = useState({ title: '', receiver_name: '', receiver_phone: '', province: '', city: '', postal_code: '', full_address: '', is_default: false });
   const [addressErrors, setAddressErrors] = useState({});
   const [profileErrors, setProfileErrors] = useState({});
+  const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
 
@@ -124,7 +126,7 @@ export default function DashboardPage() {
                 (user?.first_name?.[0] || user?.phone?.[user.phone.length - 2] || 'ر').toUpperCase()
               )}
             </div>
-            <div>
+            <div className="flex-1">
               <h1 className="text-xl font-extrabold text-gray-900">
                 {user?.first_name ? `${user.first_name} ${user.last_name || ''}` : 'کاربر راسته'}
               </h1>
@@ -269,6 +271,16 @@ export default function DashboardPage() {
                   <input value={user?.phone || ''} readOnly className="w-full px-2 py-1.5 border rounded-lg text-xs bg-gray-50 text-gray-500" />
                 </div>
                 <div>
+                  <label className="text-[10px] text-gray-500 mb-0.5 block">🎂 تاریخ تولد</label>
+                  <button 
+                    type="button"
+                    onClick={() => setShowBirthdayPicker(true)}
+                    className="w-full px-2 py-1.5 border rounded-lg text-xs text-right bg-white hover:border-pink-300"
+                  >
+                    📅 {profileForm.birthday || 'انتخاب تاریخ تولد'}
+                  </button>
+                </div>
+                <div>
                   <label className="text-[10px] text-gray-500 mb-0.5 block">📧 ایمیل</label>
                   <input 
                     type="email"
@@ -410,7 +422,22 @@ export default function DashboardPage() {
               </button>
               <button onClick={() => setShowProfileModal(false)} className="bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-xs font-bold">بستن</button>
             </div>
+            
           </div>
+        </div>
+      )}
+      
+      {/* تقویم تاریخ تولد */}
+      {showBirthdayPicker && (
+        <div className="fixed inset-0 bg-black/40 z-[70] flex items-center justify-center p-3" onClick={() => setShowBirthdayPicker(false)}>
+          <JalaliCalendar
+            value={profileForm.birthday || ''}
+            onChange={(date) => {
+              setProfileForm({...profileForm, birthday: date});
+              setShowBirthdayPicker(false);
+            }}
+            theme="pink"
+          />
         </div>
       )}
       

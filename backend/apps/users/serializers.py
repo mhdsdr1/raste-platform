@@ -94,3 +94,20 @@ class UserSerializer(serializers.ModelSerializer):
             'is_active', 'is_blocked', 'created_at',
         ]
         read_only_fields = ['id', 'phone', 'user_type', 'created_at', 'is_active', 'is_blocked']
+
+class NotificationSerializer(serializers.ModelSerializer):
+    notif_type_display = serializers.CharField(source='get_notif_type_display', read_only=True)
+    created_at_shamsi = serializers.SerializerMethodField()
+    
+    def get_created_at_shamsi(self, obj):
+        try:
+            import jdatetime
+            jd = jdatetime.datetime.fromgregorian(datetime=obj.created_at)
+            return f"{jd.year}/{jd.month:02d}/{jd.day:02d} {jd.hour:02d}:{jd.minute:02d}"
+        except:
+            return str(obj.created_at)
+    
+    class Meta:
+        model = models.Notification
+        fields = ['id', 'notif_type', 'notif_type_display', 'title', 'message', 'link', 'icon', 'is_read', 'created_at', 'created_at_shamsi']
+        read_only_fields = ['id', 'created_at']

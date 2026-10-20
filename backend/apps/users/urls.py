@@ -2,6 +2,13 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # نوتیفیکیشن‌ها
+    path('notifications/', views.notification_list, name='notifications'),
+    path('notifications/unread/', views.notification_unread_count, name='notif-unread'),
+    path('notifications/<int:notif_id>/read/', views.notification_mark_read, name='notif-read'),
+    path('notifications/read-all/', views.notification_mark_all_read, name='notif-read-all'),
+    path('notifications/<int:notif_id>/', views.notification_delete, name='notif-delete'),
+
 
     # پروفایل
     path('profile/', views.profile_view, name='profile'),

@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import { useEffect, lazy, Suspense } from 'react';
 import useAuthStore from './store/authStore';
+import NotificationSystem from './components/NotificationSystem';
 
 const HomePage = lazy(() => import('./pages/Home/HomePage.jsx'));
 const AuthPage = lazy(() => import('./pages/Auth/AuthPage.jsx'));
@@ -39,6 +40,7 @@ export default function App() {
 
   return (
     <Suspense fallback={<LoadingSpinner />}>
+      <NotificationSystem />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/auth" element={<AuthPage />} />

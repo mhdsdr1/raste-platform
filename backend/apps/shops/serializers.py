@@ -4,59 +4,6 @@ from .models import Shop, Product, SellerExpense, SellerDebt, DebtPayment, Insta
 
 class ProductSerializer(serializers.ModelSerializer):
     shop_name = serializers.CharField(source='shop.name', read_only=True)
-    settlement_paid = serializers.FloatField(read_only=True)
-    tx_remaining = serializers.FloatField(read_only=True)
-    settlements_data = serializers.SerializerMethodField()
-    
-    def get_settlements_data(self, obj):
-        result = []
-        
-        # ═══ ۱. از DebtPayment (payments) ═══
-        for p in obj.payments.all().order_by('payment_date'):
-            try:
-                import jdatetime
-                jd = jdatetime.date.fromgregorian(date=p.payment_date)
-                date_shamsi = f"{jd.year}/{jd.month:02d}/{jd.day:02d}"
-            except:
-                date_shamsi = str(p.payment_date)
-            
-            result.append({
-                'id': 'pay_' + str(p.id),
-                'date_shamsi': date_shamsi,
-                'date': str(p.payment_date),
-                'amount': float(p.amount),
-                'method': p.get_payment_method_display(),
-                'notes': p.notes or '',
-            })
-        
-        # ═══ ۲. از settlements (SellerDebt معکوس) ═══
-        for s in obj.settlements.all().order_by('transaction_date'):
-            try:
-                import jdatetime
-                jd = jdatetime.date.fromgregorian(date=s.transaction_date)
-                date_shamsi = f"{jd.year}/{jd.month:02d}/{jd.day:02d}"
-            except:
-                date_shamsi = str(s.transaction_date)
-            
-            notes = s.notes or ''
-            method = 'نقدی'
-            if 'کارت' in notes: method = 'کارت به کارت'
-            elif 'پوز' in notes: method = 'پوز'
-            elif 'چک' in notes: method = 'چک'
-            elif 'سایر' in notes: method = 'سایر'
-            
-            result.append({
-                'id': 'set_' + str(s.id),
-                'date_shamsi': date_shamsi,
-                'date': str(s.transaction_date),
-                'amount': float(s.amount),
-                'method': method,
-                'notes': notes,
-            })
-        
-        # مرتب‌سازی بر اساس تاریخ
-        result.sort(key=lambda x: x['date'])
-        return result
     is_stock = serializers.BooleanField(read_only=True)
     owner_name = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()

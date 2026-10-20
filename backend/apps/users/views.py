@@ -298,3 +298,70 @@ def wallet_info(request):
     
     wallet, _ = Wallet.objects.get_or_create(user=request.user)
     return Response(WalletSerializer(wallet).data)
+
+# ═══════════════════════════════════════════════════════════
+# نوتیفیکیشن‌ها
+# ═══════════════════════════════════════════════════════════
+
+@extend_schema(description='لیست نوتیفیکیشن‌ها')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def notification_list(request):
+    from .models import Notification
+    from .serializers import NotificationSerializer
+    
+    notifs = Notification.objects.filter(user=request.user)[:50]
+    unread_count = Notification.objects.filter(user=request.user, is_read=False).count()
+    
+    return Response({
+        'notifications': NotificationSerializer(notifs, many=True).data,
+        'unread_count': unread_count,
+    })
+
+
+@extend_schema(description='تعداد خوانده‌نشده‌ها')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def notification_unread_count(request):
+    from .models import Notification
+    count = Notification.objects.filter(user=request.user, is_read=False).count()
+    return Response({'unread_count': count})
+
+
+@extend_schema(description='خواندن نوتیفیکیشن')
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def notification_mark_read(request, notif_id):
+    from .models import Notification
+    from .serializers import NotificationSerializer
+    
+    try:
+        notif = Notification.objects.get(id=notif_id, user=request.user)
+    except Notification.DoesNotExist:
+        return Response({'error': 'یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    
+    notif.is_read = True
+    notif.save()
+    return Response(NotificationSerializer(notif).data)
+
+
+@extend_schema(description='خواندن همه نوتیفیکیشن‌ها')
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def notification_mark_all_read(request):
+    from .models import Notification
+    Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+    return Response({'message': 'همه خوانده شدند'})
+
+
+@extend_schema(description='حذف نوتیفیکیشن')
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def notification_delete(request, notif_id):
+    from .models import Notification
+    try:
+        notif = Notification.objects.get(id=notif_id, user=request.user)
+        notif.delete()
+        return Response({'message': 'حذف شد'})
+    except Notification.DoesNotExist:
+        return Response({'error': 'یافت نشد'}, status=status.HTTP_404_NOT_FOUND)

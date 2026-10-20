@@ -374,3 +374,54 @@ class Favorite(models.Model):
     
     def __str__(self):
         return f"{self.user.phone} - {self.product.title}"
+
+class Notification(models.Model):
+    """نوتیفیکیشن کاربر"""
+    
+    NOTIF_TYPES = [
+        ('order', 'سفارش'),
+        ('payment', 'پرداخت'),
+        ('shipment', 'ارسال'),
+        ('discount', 'تخفیف'),
+        ('system', 'سیستمی'),
+        ('chat', 'چت'),
+        ('alert', 'هشدار'),
+    ]
+    
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+        verbose_name='کاربر'
+    )
+    notif_type = models.CharField(max_length=20, choices=NOTIF_TYPES, default='system', verbose_name='نوع')
+    title = models.CharField(max_length=200, verbose_name='عنوان')
+    message = models.TextField(verbose_name='متن')
+    link = models.CharField(max_length=200, blank=True, default='', verbose_name='لینک')
+    icon = models.CharField(max_length=10, blank=True, default='', verbose_name='آیکون')
+    
+    is_read = models.BooleanField(default=False, verbose_name='خوانده شده')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='تاریخ')
+    
+    class Meta:
+        verbose_name = 'نوتیفیکیشن'
+        verbose_name_plural = 'نوتیفیکیشن‌ها'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'is_read']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.phone} - {self.title}"
+    
+    @staticmethod
+    def create_notif(user, title, message, notif_type='system', link='', icon=''):
+        """ساخت نوتیف سریع"""
+        return Notification.objects.create(
+            user=user,
+            title=title,
+            message=message,
+            notif_type=notif_type,
+            link=link,
+            icon=icon,
+        )
