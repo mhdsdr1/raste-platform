@@ -21,6 +21,7 @@ const AnalyticsPage = lazy(() => import('./pages/Seller/AnalyticsPage.jsx'));
 const ExpensesPage = lazy(() => import('./pages/Seller/ExpensesPage.jsx'));
 const DebtsPage = lazy(() => import('./pages/Seller/DebtsPage.jsx'));
 const InstallmentsPage = lazy(() => import('./pages/Seller/InstallmentsPage.jsx'));
+const NotificationsPage = lazy(() => import('./pages/Notifications/NotificationsPage.jsx'));
 
 function LoadingSpinner() {
   return (
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/orders" element={<OrdersPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/seller/shops" element={<SellerShopsPage />} />
         <Route path="/seller/shops/:id/edit" element={<EditShopPage />} />
         <Route path="/seller/shops/:id/products" element={<SellerProductsPage />} />

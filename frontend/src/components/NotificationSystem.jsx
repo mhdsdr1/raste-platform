@@ -173,16 +173,22 @@ export default function NotificationSystem() {
                 ))
               )}
             </div>
-            {(unreadNormal + unreadAlert) > 0 && (
-              <div className="p-2 border-t bg-gray-50">
+            <div className="p-2 border-t bg-gray-50 flex gap-1">
+              {(unreadNormal + unreadAlert) > 0 && (
                 <button
                   onClick={markAllRead}
-                  className="w-full text-[10px] text-pink-600 font-bold py-1"
+                  className="flex-1 text-[10px] text-pink-600 font-bold py-1 bg-white rounded"
                 >
                   ✅ خواندن همه
                 </button>
-              </div>
-            )}
+              )}
+              <button
+                onClick={() => { setShowList(false); navigate('/notifications'); }}
+                className="flex-1 text-[10px] text-white bg-pink-500 font-bold py-1 rounded"
+              >
+                📋 مشاهده همه
+              </button>
+            </div>
           </div>
         </div>
       )}
