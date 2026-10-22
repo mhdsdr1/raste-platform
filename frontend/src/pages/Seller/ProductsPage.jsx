@@ -59,6 +59,9 @@ export default function SellerProductsPage() {
   const [sizesList, setSizesList] = useState([]);
   const [newSizeName, setNewSizeName] = useState('');
   const [newSizeStock, setNewSizeStock] = useState('');
+  const [appealModal, setAppealModal] = useState(null);
+  const [appealText, setAppealText] = useState('');
+  const [appealLoading, setAppealLoading] = useState(false);
 
   const fetchProducts = async () => {
     try {
@@ -344,6 +347,21 @@ export default function SellerProductsPage() {
                     </div>
                     {isLowStock && <p className="text-xs text-orange-600 mt-1">⚠️ فقط {product.stock} عدد دیگر موجود است</p>}
                     {isOutOfStock && <p className="text-xs text-red-600 mt-1">❌ اتمام موجودی</p>}
+                    {product.approval_status === 'rejected' && (
+                      <div className="mt-1 bg-red-50 rounded-lg p-1.5">
+                        <p className="text-[10px] text-red-600 font-bold">❌ رد شده: {product.rejection_reason || 'دلیل نامشخص'}</p>
+                        {product.appeal_status === 'pending' ? (
+                          <p className="text-[10px] text-orange-600 mt-0.5">⏳ اعتراض شما در حال بررسی است</p>
+                        ) : product.appeal_status === 'accepted' ? (
+                          <p className="text-[10px] text-green-600 mt-0.5">✅ اعتراض شما پذیرفته شد</p>
+                        ) : (
+                          <button onClick={() => { setAppealModal(product); setAppealText(''); }} className="text-[10px] text-pink-600 font-bold mt-0.5">📩 اعتراض به دستیار بازارچه</button>
+                        )}
+                      </div>
+                    )}
+                    {product.approval_status === 'pending_review' && (
+                      <p className="text-[10px] text-orange-600 mt-1">⏳ در صف بررسی دستی</p>
+                    )}
                   </div>
                   <Link to={`/seller/products/${product.id}/edit`} className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">✏️</Link>
                   <button onClick={() => handleDelete(product)} className="w-9 h-9 bg-red-50 text-red-600 rounded-xl flex items-center justify-center">🗑️</button>
@@ -382,6 +400,59 @@ export default function SellerProductsPage() {
           </div>
         )}
       </main>
+      
+      {/* مودال اعتراض */}
+      {appealModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3" onClick={() => setAppealModal(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 bg-gradient-to-l from-pink-500 to-pink-600 rounded-t-2xl">
+              <h3 className="font-bold text-white text-sm">📩 اعتراض به دستیار بازارچه</h3>
+              <button onClick={() => setAppealModal(null)} className="text-white text-lg">✕</button>
+            </div>
+            <div className="p-3 space-y-2">
+              <div className="bg-red-50 rounded-lg p-2 text-[11px]">
+                <p className="font-bold text-red-700">آگهی: {appealModal.title}</p>
+                <p className="text-red-600 mt-0.5">دلیل رد: {appealModal.rejection_reason || 'نامشخص'}</p>
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 mb-1 block">متن اعتراض *</label>
+                <textarea
+                  value={appealText}
+                  onChange={e => setAppealText(e.target.value)}
+                  rows={4}
+                  placeholder="توضیح دهید چرا فکر می‌کنید این آگهی اشتباه رد شده..."
+                  className="w-full px-3 py-2 border rounded-lg text-xs resize-none"
+                />
+              </div>
+            </div>
+            <div className="p-3 border-t bg-gray-50 flex gap-2 rounded-b-2xl">
+              <button
+                onClick={async () => {
+                  if (!appealText.trim()) { toast.error('متن اعتراض الزامی'); return; }
+                  setAppealLoading(true);
+                  try {
+                    await api.post(`/shops/products/${appealModal.id}/appeal/`, { appeal_text: appealText });
+                    toast.success('اعتراض شما ثبت شد');
+                    setAppealModal(null);
+                    // رفرش
+                    const res = await api.get(`/shops/${appealModal.shop}/products/all/`);
+                    setProducts(res.data || []);
+                  } catch (e) {
+                    toast.error(e?.response?.data?.error || 'خطا');
+                  } finally {
+                    setAppealLoading(false);
+                  }
+                }}
+                disabled={appealLoading}
+                className="flex-1 bg-pink-500 text-white py-2 rounded-lg text-xs font-bold disabled:opacity-50"
+              >
+                {appealLoading ? '...' : '✓ ثبت اعتراض'}
+              </button>
+              <button onClick={() => setAppealModal(null)} className="bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-xs font-bold">انصراف</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
