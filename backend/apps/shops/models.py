@@ -124,6 +124,37 @@ class Product(models.Model):
     buy_link_active = models.BooleanField(default=True, verbose_name='لینک خرید فعال')
     is_visible = models.BooleanField(default=True, verbose_name='قابل نمایش')
     
+    # ═══ سیستم بررسی و اعتراض ═══
+    APPROVAL_STATUS_CHOICES = [
+        ('pending', 'در انتظار بررسی'),
+        ('approved', 'تایید شده'),
+        ('rejected', 'رد شده'),
+        ('pending_review', 'نیازمند بررسی دستی'),
+    ]
+    approval_status = models.CharField(
+        max_length=20,
+        choices=APPROVAL_STATUS_CHOICES,
+        default='approved',
+        verbose_name='وضعیت تایید'
+    )
+    rejection_reason = models.TextField(blank=True, default='', verbose_name='دلیل رد')
+    
+    # ═══ اعتراض ═══
+    APPEAL_STATUS_CHOICES = [
+        ('none', 'بدون اعتراض'),
+        ('pending', 'در انتظار بررسی'),
+        ('accepted', 'پذیرفته شد'),
+        ('rejected', 'رد شد'),
+    ]
+    appeal_status = models.CharField(
+        max_length=20,
+        choices=APPEAL_STATUS_CHOICES,
+        default='none',
+        verbose_name='وضعیت اعتراض'
+    )
+    appeal_text = models.TextField(blank=True, default='', verbose_name='متن اعتراض')
+    appeal_created_at = models.DateTimeField(null=True, blank=True, verbose_name='تاریخ اعتراض')
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='تاریخ ایجاد')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='آخرین بروزرسانی')
     

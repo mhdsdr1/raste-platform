@@ -85,9 +85,60 @@ def create_product(request, shop_id):
     if 'image' in request.FILES:
         product.image = request.FILES['image']
         product.save()
-        print('DEBUG image saved:', product.image)
     else:
         print('DEBUG: image not in FILES')
+    
+    # ═══ بررسی خودکار با AI ═══
+    try:
+        from .ai_moderator import moderate_product
+        image_file = request.FILES.get('image')
+        result = moderate_product(
+            title=product.title or '',
+            description=product.description or '',
+            image_file=image_file,
+        )
+        
+        if result['status'] == 'approved':
+            product.approval_status = 'approved'
+        elif result['status'] == 'rejected':
+            product.approval_status = 'rejected'
+            product.rejection_reason = result['reason']
+            product.is_visible = False
+            # هشدار به فروشنده
+            try:
+                from apps.users.models import Notification
+                Notification.create_notif(
+                    user=request.user,
+                    title='⚠️ آگهی شما رد شد',
+                    message=f'آگهی «{product.title}» به دلیل «{result["reason"]}» رد شد. می‌توانید اعتراض کنید.',
+                    notif_type='alert',
+                    link='/seller/products',
+                    icon='⚠️',
+                )
+            except Exception as e:
+                print('Notif error:', e)
+        elif result['status'] == 'pending_review':
+            product.approval_status = 'pending_review'
+            product.is_visible = False
+            try:
+                from apps.users.models import Notification
+                Notification.create_notif(
+                    user=request.user,
+                    title='⏳ آگهی شما در انتظار بررسی',
+                    message=f'آگهی «{product.title}» در صف بررسی دستی قرار گرفت. حداکثر ۲۴ ساعت آینده نتیجه اعلام می‌شود.',
+                    notif_type='system',
+                    link='/seller/products',
+                    icon='⏳',
+                )
+            except Exception as e:
+                print('Notif error:', e)
+        
+        product.save()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        product.approval_status = 'approved'  # فال‌بک: اگه AI خطا داد، تایید کن
+        product.save()
     
     return Response(ProductSerializer(product).data, status=status.HTTP_201_CREATED)
 
@@ -864,3 +915,91 @@ def delete_payment(request, payment_id):
         return Response({'message': 'حذف شد', 'debt_remaining': float(debt.remaining)})
     except DebtPayment.DoesNotExist:
         return Response({'error': 'یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@extend_schema(description='ثبت اعتراض به رد آگهی')
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def submit_appeal(request, product_id):
+    from .models import Product
+    from django.utils import timezone
+    try:
+        product = Product.objects.get(id=product_id, shop__owner=request.user)
+    except Product.DoesNotExist:
+        return Response({'error': 'محصول یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    if product.approval_status not in ['rejected', 'pending_review']:
+        return Response({'error': 'فقط برای آگهی‌های رد شده یا در انتظار بررسی قابل اعتراض است'}, status=status.HTTP_400_BAD_REQUEST)
+    if product.appeal_status == 'pending':
+        return Response({'error': 'اعتراض شما قبلاً ثبت شده'}, status=status.HTTP_400_BAD_REQUEST)
+    appeal_text = request.data.get('appeal_text', '').strip()
+    if not appeal_text:
+        return Response({'error': 'متن اعتراض الزامی است'}, status=status.HTTP_400_BAD_REQUEST)
+    product.appeal_text = appeal_text
+    product.appeal_status = 'pending'
+    product.appeal_created_at = timezone.now()
+    product.save()
+    try:
+        from apps.users.models import Notification, User
+        for admin in User.objects.filter(is_staff=True):
+            Notification.create_notif(
+                user=admin, title='⚠️ اعتراض جدید به آگهی',
+                message='فروشنده ' + request.user.phone + ' به رد آگهی «' + product.title + '» اعتراض کرد.',
+                notif_type='alert', link='/admin/appeals', icon='📩',
+            )
+    except Exception as e:
+        print('Notif error:', e)
+    return Response({'message': 'اعتراض شما ثبت شد', 'appeal_status': 'pending'})
+
+
+@extend_schema(description='لیست اعتراضات (ادمین)')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_appeals(request):
+    if not request.user.is_staff:
+        return Response({'error': 'دسترسی ندارید'}, status=status.HTTP_403_FORBIDDEN)
+    from .models import Product
+    from .serializers import ProductSerializer
+    products = Product.objects.filter(appeal_status='pending').order_by('-appeal_created_at')
+    return Response({'appeals': ProductSerializer(products, many=True).data, 'count': products.count()})
+
+
+@extend_schema(description='بررسی اعتراض (ادمین)')
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def review_appeal(request, product_id):
+    if not request.user.is_staff:
+        return Response({'error': 'دسترسی ندارید'}, status=status.HTTP_403_FORBIDDEN)
+    from .models import Product
+    from .serializers import ProductSerializer
+    try:
+        product = Product.objects.get(id=product_id)
+    except Product.DoesNotExist:
+        return Response({'error': 'محصول یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    action = request.data.get('action')
+    admin_notes = request.data.get('admin_notes', '')
+    if action == 'accept':
+        product.approval_status = 'approved'
+        product.appeal_status = 'accepted'
+        product.rejection_reason = ''
+        product.is_visible = True
+        msg = 'اعتراض پذیرفته شد'
+    elif action == 'reject':
+        product.appeal_status = 'rejected'
+        if admin_notes:
+            product.rejection_reason = admin_notes
+        msg = 'اعتراض رد شد'
+    else:
+        return Response({'error': 'action باید accept یا reject باشد'}, status=status.HTTP_400_BAD_REQUEST)
+    product.save()
+    try:
+        from apps.users.models import Notification
+        Notification.create_notif(
+            user=product.shop.owner,
+            title='📩 نتیجه اعتراض: ' + msg,
+            message='آگهی «' + product.title + '» - ' + msg,
+            notif_type='order' if action == 'accept' else 'alert',
+            link='/seller/products', icon='✅' if action == 'accept' else '❌',
+        )
+    except Exception as e:
+        print('Notif error:', e)
+    return Response(ProductSerializer(product).data)

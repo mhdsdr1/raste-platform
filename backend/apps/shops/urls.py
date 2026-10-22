@@ -5,6 +5,10 @@ from . import installments_views
 from . import views_marketplace
 
 urlpatterns = [
+    path('products/<int:product_id>/appeal/', views.submit_appeal, name='submit-appeal'),
+    path('appeals/', views.list_appeals, name='list-appeals'),
+    path('appeals/<int:product_id>/review/', views.review_appeal, name='review-appeal'),
+
     # Shop URLs
     path('', views.create_shop, name='create-shop'),
     path('my/', views.list_my_shops, name='my-shops'),

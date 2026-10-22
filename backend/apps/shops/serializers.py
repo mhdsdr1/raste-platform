@@ -35,6 +35,7 @@ class ProductSerializer(serializers.ModelSerializer):
         'sizes',
             'buy_link_active', 'is_visible', 'is_stock',
             'created_at', 'updated_at',
+            'approval_status', 'rejection_reason', 'appeal_status', 'appeal_text', 'appeal_created_at'
         ]
         read_only_fields = ['id', 'shop', 'created_at', 'updated_at']
 

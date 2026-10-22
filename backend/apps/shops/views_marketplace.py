@@ -35,6 +35,7 @@ def marketplace_search(request):
         is_visible=True,
         buy_link_active=True,
         shop__is_active=True,
+        approval_status='approved',
     )
     
     # ========== فیلترها ==========
