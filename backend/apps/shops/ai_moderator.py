@@ -211,8 +211,9 @@ def moderate_product(title, description, image_file=None):
             'layers': results,
         }
     
-    # ═══ لایه ۲: AvalAI (متن) ═══
-    if os.getenv('AVALAI_API_KEY'):
+    # ═══ لایه ۲: AvalAI (متن) — فقط اگه فعال باشه ═══
+    avalai_enabled = os.getenv('AVALAI_ENABLED', 'false').lower() == 'true'
+    if avalai_enabled and os.getenv('AVALAI_API_KEY'):
         avalai_result = check_text_with_avalai(text)
         results['avalai'] = avalai_result
         if avalai_result['status'] == 'rejected':
@@ -225,6 +226,13 @@ def moderate_product(title, description, image_file=None):
             return {
                 'status': 'pending_review',
                 'reason': avalai_result['reason'],
+                'layers': results,
+            }
+        if avalai_result['status'] == 'error':
+            # اگه AvalAI خطا داد (429, timeout, ...)، به صف بررسی دستی بره
+            return {
+                'status': 'pending_review',
+                'reason': f'بررسی خودکار ممکن نشد: {avalai_result.get("reason", "خطا")}',
                 'layers': results,
             }
     
