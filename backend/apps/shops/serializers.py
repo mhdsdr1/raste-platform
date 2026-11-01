@@ -3,6 +3,25 @@ from .models import Shop, Product, SellerExpense, SellerDebt, DebtPayment, Insta
 
 
 class ProductSerializer(serializers.ModelSerializer):
+    admin_attachment_url = serializers.SerializerMethodField()
+    appeal_attachment_url = serializers.SerializerMethodField()
+    
+    def get_admin_attachment_url(self, obj):
+        if obj.admin_attachment:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.admin_attachment.url)
+            return obj.admin_attachment.url
+        return ''
+    
+    def get_appeal_attachment_url(self, obj):
+        if obj.appeal_attachment:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.appeal_attachment.url)
+            return obj.appeal_attachment.url
+        return ''
+
     shop_name = serializers.CharField(source='shop.name', read_only=True)
     is_stock = serializers.BooleanField(read_only=True)
     owner_name = serializers.SerializerMethodField()
@@ -35,7 +54,7 @@ class ProductSerializer(serializers.ModelSerializer):
         'sizes',
             'buy_link_active', 'is_visible', 'is_stock',
             'created_at', 'updated_at',
-            'approval_status', 'rejection_reason', 'appeal_status', 'appeal_text', 'appeal_created_at'
+            'approval_status', 'rejection_reason', 'appeal_status', 'appeal_text', 'appeal_created_at', 'admin_response', 'admin_attachment_url', 'appeal_attachment_url', 'allow_appeal_attachment', 'appeal_attachment_max_size_mb'
         ]
         read_only_fields = ['id', 'shop', 'created_at', 'updated_at']
 
@@ -46,7 +65,7 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         fields = [
             'title', 'description', 'price', 'stock', 'purchase_price', 'warehouse_stock', 'image',
             'condition', 'health_status', 'health_description',
-            'allow_local_test', 'allow_courier', 'story', 'category', 'color',
+            'allow_local_test', 'allow_courier', 'story', 'color',
         'colors',
         'sizes',
         'colors',

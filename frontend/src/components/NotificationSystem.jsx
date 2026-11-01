@@ -40,7 +40,15 @@ export default function NotificationSystem() {
     setIsAuth(true);
     fetchNotifications(false);
     const interval = setInterval(() => fetchNotifications(true), 30000);
-    return () => clearInterval(interval);
+    
+    // گوش دادن به event برای نوتیف فوری
+    const handleRefresh = () => fetchNotifications(true);
+    window.addEventListener('refresh-notifications', handleRefresh);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('refresh-notifications', handleRefresh);
+    };
   }, []);
 
   if (!isAuth) return null;

@@ -1,5 +1,7 @@
 from django.db import models
 from django.conf import settings
+from django.core.validators import FileExtensionValidator
+from django.core.exceptions import ValidationError
 
 
 class Shop(models.Model):
@@ -117,7 +119,30 @@ class Product(models.Model):
     colors = models.JSONField(default=dict, blank=True, verbose_name="رنگ‌بندی با موجودی")
     color = models.CharField(max_length=50, null=True, blank=True, default="", verbose_name="رنگ")
     sizes = models.JSONField(default=dict, blank=True, verbose_name='سایزبندی')
-    category = models.CharField(max_length=100, blank=True, default="", verbose_name="دسته‌بندی")
+    CATEGORY_CHOICES = [
+        ('clothing', 'پوشاک'),
+        ('food', 'مواد غذایی'),
+        ('home', 'لوازم خانه'),
+        ('electronics', 'لوازم الکترونیکی'),
+        ('beauty', 'آرایشی و بهداشتی'),
+        ('books', 'کتاب و لوازم‌التحریر'),
+        ('sports', 'ورزشی'),
+        ('toys', 'اسباب‌بازی'),
+        ('auto', 'خودرو و لوازم'),
+        ('other', 'سایر'),
+        # دسته‌های پرخطر (نیازمند تایید)
+        ('medicine', 'دارو (نیاز به مجوز)'),
+        ('supplement', 'مکمل (نیاز به مجوز)'),
+        ('cigarette', 'سیگار و قلیان (ممنوع)'),
+        ('alcohol', 'مشروبات الکلی (ممنوع)'),
+    ]
+    
+    # دسته‌های پرخطر — نیازمند تایید دستی
+    HIGH_RISK_CATEGORIES = ['medicine', 'supplement', 'cigarette', 'alcohol']
+    # دسته‌های کاملاً ممنوع — بدون امکان ثبت
+    BANNED_CATEGORIES = ['cigarette', 'alcohol']
+    
+    category = models.CharField(max_length=100, choices=CATEGORY_CHOICES, blank=True, default="", verbose_name="دسته‌بندی")
     story = models.TextField(null=True, blank=True, verbose_name='داستان محصول')
     
     # وضعیت نمایش
@@ -154,6 +179,27 @@ class Product(models.Model):
     )
     appeal_text = models.TextField(blank=True, default='', verbose_name='متن اعتراض')
     appeal_created_at = models.DateTimeField(null=True, blank=True, verbose_name='تاریخ اعتراض')
+    admin_response = models.TextField(blank=True, default='', verbose_name='پاسخ ادمین')
+    def validate_file_size(value):
+        filesize = value.size
+        if filesize > 1024 * 1024:  # 1 MB
+            raise ValidationError('حجم فایل نباید بیشتر از ۱ مگابایت باشد')
+        return value
+    
+    admin_attachment = models.FileField(
+        upload_to='appeal_attachments/',
+        null=True, blank=True,
+        validators=[validate_file_size, FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'pdf'])],
+        verbose_name='فایل پیوست ادمین'
+    )
+    appeal_attachment = models.FileField(
+        upload_to='appeal_attachments/',
+        null=True, blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'pdf'])],
+        verbose_name='فایل پیوست اعتراض'
+    )
+    allow_appeal_attachment = models.BooleanField(default=False, verbose_name='اجازه پیوست فایل به اعتراض')
+    appeal_attachment_max_size_mb = models.IntegerField(default=1, verbose_name='حداکثر حجم پیوست اعتراض (مگابایت)')
     
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='تاریخ ایجاد')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='آخرین بروزرسانی')
@@ -503,3 +549,60 @@ class Installment(models.Model):
         if self.is_paid:
             return False
         return self.due_date < timezone.now().date()
+
+class SystemSettings(models.Model):
+    """تنظیمات سیستم (فقط ادمین)"""
+    
+    appeal_max_file_size_mb = models.IntegerField(default=1, verbose_name='حداکثر حجم فایل اعتراض (مگابایت)')
+    admin_attachment_max_size_mb = models.IntegerField(default=1, verbose_name='حداکثر حجم فایل پاسخ ادمین (مگابایت)')
+    
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = 'تنظیمات سیستم'
+        verbose_name_plural = 'تنظیمات سیستم'
+    
+    def __str__(self):
+        return f'تنظیمات (اعتراض: {self.appeal_max_file_size_mb}MB، ادمین: {self.admin_attachment_max_size_mb}MB)'
+    
+    @classmethod
+    def get_settings(cls):
+        obj, _ = cls.objects.get_or_create(id=1)
+        return obj
+
+class AppealMessage(models.Model):
+    """پیام‌های مکالمه اعتراض (تاریخچه کامل)"""
+    
+    SENDER_TYPE_CHOICES = [
+        ('seller', 'فروشنده'),
+        ('admin', 'ادمین'),
+    ]
+    
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='appeal_messages',
+        verbose_name='محصول'
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name='فرستنده'
+    )
+    sender_type = models.CharField(max_length=10, choices=SENDER_TYPE_CHOICES, verbose_name='نوع فرستنده')
+    message = models.TextField(blank=True, default='', verbose_name='متن پیام')
+    attachment = models.FileField(
+        upload_to='appeal_attachments/',
+        null=True, blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'pdf'])],
+        verbose_name='فایل پیوست'
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='تاریخ')
+    
+    class Meta:
+        verbose_name = 'پیام اعتراض'
+        verbose_name_plural = 'پیام‌های اعتراض'
+        ordering = ['created_at']
+    
+    def __str__(self):
+        return f'{self.get_sender_type_display()} - {self.product.title} - {self.created_at}'

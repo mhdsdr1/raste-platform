@@ -88,6 +88,49 @@ def create_product(request, shop_id):
     else:
         print('DEBUG: image not in FILES')
     
+    # ═══ چک دسته‌های پرخطر ═══
+    category = product.category or ''
+    if category in Product.BANNED_CATEGORIES:
+        product.approval_status = 'rejected'
+        product.rejection_reason = 'این دسته‌بندی طبق قوانین پلتفرم ممنوع است'
+        product.is_visible = False
+        product.save()
+        # نوتیف به فروشنده
+        try:
+            from apps.users.models import Notification
+            Notification.create_notif(
+                user=request.user,
+                title='⚠️ آگهی شما رد شد',
+                message=f'آگهی «{product.title}» به دلیل «{product.rejection_reason}» رد شد.',
+                notif_type='alert',
+                link='/seller/products',
+                icon='⚠️',
+            )
+        except Exception as e:
+            print('Notif error:', e)
+        return Response(ProductSerializer(product).data, status=status.HTTP_201_CREATED)
+    
+    if category in Product.HIGH_RISK_CATEGORIES:
+        product.approval_status = 'pending_review'
+        product.rejection_reason = 'این دسته‌بندی نیازمند تایید دستی است'
+        product.is_visible = False
+        product.save()
+        # نوتیف به ادمین
+        try:
+            from apps.users.models import Notification, User
+            for admin in User.objects.filter(is_staff=True):
+                Notification.create_notif(
+                    user=admin,
+                    title='⚠️ محصول نیازمند تایید',
+                    message=f'محصول «{product.title}» در دسته پرخطر ثبت شد و نیازمند تایید است.',
+                    notif_type='alert',
+                    link='/admin/appeals',
+                    icon='⚠️',
+                )
+        except Exception as e:
+            print('Notif error:', e)
+        return Response(ProductSerializer(product).data, status=status.HTTP_201_CREATED)
+    
     # ═══ بررسی خودکار با AI ═══
     try:
         from .ai_moderator import moderate_product
@@ -110,9 +153,9 @@ def create_product(request, shop_id):
                 Notification.create_notif(
                     user=request.user,
                     title='⚠️ آگهی شما رد شد',
-                    message=f'آگهی «{product.title}» به دلیل «{result["reason"]}» رد شد. می‌توانید اعتراض کنید.',
+                    message=f'آگهی «{product.title}» به دلیل استفاده از عبارات ممنوع رد شد. می‌توانید اعتراض کنید.',
                     notif_type='alert',
-                    link='/seller/products',
+                    link=f'/seller/appeal/{product.id}',
                     icon='⚠️',
                 )
             except Exception as e:
@@ -937,7 +980,29 @@ def submit_appeal(request, product_id):
     product.appeal_text = appeal_text
     product.appeal_status = 'pending'
     product.appeal_created_at = timezone.now()
+    
+    # فایل پیوست اعتراض — فقط اگه ادمین اجازه داده باشه
+    if 'appeal_attachment' in request.FILES:
+        if not product.allow_appeal_attachment:
+            return Response({'error': 'ارسال فایل پیوست برای این اعتراض مجاز نیست'}, status=status.HTTP_400_BAD_REQUEST)
+        file = request.FILES['appeal_attachment']
+        max_size = product.appeal_attachment_max_size_mb * 1024 * 1024
+        if file.size > max_size:
+            return Response({'error': f'حجم فایل نباید بیشتر از {product.appeal_attachment_max_size_mb} مگابایت باشد'}, status=status.HTTP_400_BAD_REQUEST)
+        product.appeal_attachment = file
+    
     product.save()
+    
+    # ثبت پیام در تاریخچه
+    from .models import AppealMessage
+    AppealMessage.objects.create(
+        product=product,
+        sender=request.user,
+        sender_type='seller',
+        message=appeal_text,
+        attachment=product.appeal_attachment if product.appeal_attachment else None,
+    )
+    
     try:
         from apps.users.models import Notification, User
         for admin in User.objects.filter(is_staff=True):
@@ -977,6 +1042,8 @@ def review_appeal(request, product_id):
         return Response({'error': 'محصول یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
     action = request.data.get('action')
     admin_notes = request.data.get('admin_notes', '')
+    admin_response = request.data.get('admin_response', '')
+    
     if action == 'accept':
         product.approval_status = 'approved'
         product.appeal_status = 'accepted'
@@ -990,7 +1057,43 @@ def review_appeal(request, product_id):
         msg = 'اعتراض رد شد'
     else:
         return Response({'error': 'action باید accept یا reject باشد'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if admin_response:
+        product.admin_response = admin_response
+    
+    # فعال‌سازی پیوست برای فروشنده
+    if 'allow_appeal_attachment' in request.data:
+        product.allow_appeal_attachment = str(request.data['allow_appeal_attachment']).lower() in ['true', '1', 'yes']
+    
+    if 'appeal_attachment_max_size_mb' in request.data:
+        try:
+            product.appeal_attachment_max_size_mb = int(request.data['appeal_attachment_max_size_mb'])
+        except (ValueError, TypeError):
+            pass
+    
+    # فایل پیوست
+    if 'admin_attachment' in request.FILES:
+        from .models import SystemSettings
+        settings = SystemSettings.get_settings()
+        max_size = settings.admin_attachment_max_size_mb * 1024 * 1024
+        file = request.FILES['admin_attachment']
+        if file.size > max_size:
+            return Response({'error': f'حجم فایل نباید بیشتر از {settings.admin_attachment_max_size_mb} مگابایت باشد'}, status=status.HTTP_400_BAD_REQUEST)
+        product.admin_attachment = file
+    
     product.save()
+    
+    # ثبت پاسخ ادمین در تاریخچه
+    from .models import AppealMessage
+    admin_msg = admin_response if admin_response else msg
+    AppealMessage.objects.create(
+        product=product,
+        sender=request.user,
+        sender_type='admin',
+        message=admin_msg,
+        attachment=product.admin_attachment if product.admin_attachment else None,
+    )
+    
     try:
         from apps.users.models import Notification
         Notification.create_notif(
@@ -998,8 +1101,109 @@ def review_appeal(request, product_id):
             title='📩 نتیجه اعتراض: ' + msg,
             message='آگهی «' + product.title + '» - ' + msg,
             notif_type='order' if action == 'accept' else 'alert',
-            link='/seller/products', icon='✅' if action == 'accept' else '❌',
+            link=f'/seller/appeal/{product.id}', icon='✅' if action == 'accept' else '❌',
         )
     except Exception as e:
         print('Notif error:', e)
     return Response(ProductSerializer(product).data)
+
+@extend_schema(description='تنظیمات سیستم')
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def system_settings(request):
+    """GET: خواندن، PATCH: آپدیت (فقط ادمین)"""
+    from .models import SystemSettings
+    
+    if request.method == 'GET':
+        settings = SystemSettings.get_settings()
+        return Response({
+            'appeal_max_file_size_mb': settings.appeal_max_file_size_mb,
+            'admin_attachment_max_size_mb': settings.admin_attachment_max_size_mb,
+        })
+    
+    # PATCH — فقط ادمین
+    if not request.user.is_staff:
+        return Response({'error': 'دسترسی ندارید'}, status=status.HTTP_403_FORBIDDEN)
+    
+    settings = SystemSettings.get_settings()
+    
+    if 'appeal_max_file_size_mb' in request.data:
+        try:
+            settings.appeal_max_file_size_mb = int(request.data['appeal_max_file_size_mb'])
+        except (ValueError, TypeError):
+            pass
+    
+    if 'admin_attachment_max_size_mb' in request.data:
+        try:
+            settings.admin_attachment_max_size_mb = int(request.data['admin_attachment_max_size_mb'])
+        except (ValueError, TypeError):
+            pass
+    
+    settings.save()
+    
+    return Response({
+        'appeal_max_file_size_mb': settings.appeal_max_file_size_mb,
+        'admin_attachment_max_size_mb': settings.admin_attachment_max_size_mb,
+    })
+
+@extend_schema(description='جزئیات اعتراض برای فروشنده')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def appeal_detail(request, product_id):
+    """اطلاعات اعتراض یک محصول برای فروشنده"""
+    from .serializers import ProductSerializer
+    try:
+        product = Product.objects.get(id=product_id, shop__owner=request.user)
+    except Product.DoesNotExist:
+        return Response({'error': 'محصول یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    
+    return Response({
+        'id': product.id,
+        'title': product.title,
+        'description': product.description,
+        'rejection_reason': product.rejection_reason,
+        'approval_status': product.approval_status,
+        'appeal_status': product.appeal_status,
+        'appeal_text': product.appeal_text,
+        'admin_response': product.admin_response,
+        'admin_attachment_url': request.build_absolute_uri(product.admin_attachment.url) if product.admin_attachment else '',
+        'appeal_attachment_url': request.build_absolute_uri(product.appeal_attachment.url) if product.appeal_attachment else '',
+        'allow_appeal_attachment': product.allow_appeal_attachment,
+        'appeal_attachment_max_size_mb': product.appeal_attachment_max_size_mb,
+    })
+
+@extend_schema(description='تاریخچه پیام‌های اعتراض (ادمین)')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def appeal_messages(request, product_id):
+    """لیست کامل پیام‌های مکالمه اعتراض - فقط ادمین"""
+    if not request.user.is_staff:
+        return Response({'error': 'دسترسی ندارید'}, status=status.HTTP_403_FORBIDDEN)
+    
+    from .models import Product, AppealMessage
+    try:
+        product = Product.objects.get(id=product_id)
+    except Product.DoesNotExist:
+        return Response({'error': 'محصول یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    
+    messages = AppealMessage.objects.filter(product=product).order_by('created_at')
+    
+    result = []
+    for m in messages:
+        attachment_url = ''
+        if m.attachment:
+            attachment_url = request.build_absolute_uri(m.attachment.url)
+        result.append({
+            'id': m.id,
+            'sender_type': m.sender_type,
+            'sender_phone': m.sender.phone if m.sender else '',
+            'message': m.message,
+            'attachment_url': attachment_url,
+            'created_at': m.created_at.isoformat(),
+        })
+    
+    return Response({
+        'product_id': product.id,
+        'product_title': product.title,
+        'messages': result,
+    })

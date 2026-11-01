@@ -18,6 +18,8 @@ const ShopPage = lazy(() => import('./pages/Shop/ShopPage.jsx'));
 const RatingsPage = lazy(() => import('./pages/Ratings/RatingsPage.jsx'));
 const ReportsPage = lazy(() => import('./pages/Ratings/ReportsPage.jsx'));
 const AppealsPage = lazy(() => import('./pages/Admin/AppealsPage.jsx'));
+const AppealPage = lazy(() => import('./pages/Seller/AppealPage.jsx'));
+const SettingsPage = lazy(() => import('./pages/Admin/SettingsPage.jsx'));
 const AnalyticsPage = lazy(() => import('./pages/Seller/AnalyticsPage.jsx'));
 const ExpensesPage = lazy(() => import('./pages/Seller/ExpensesPage.jsx'));
 const DebtsPage = lazy(() => import('./pages/Seller/DebtsPage.jsx'));
@@ -55,11 +57,14 @@ export default function App() {
         <Route path="/seller/shops" element={<SellerShopsPage />} />
         <Route path="/seller/shops/:id/edit" element={<EditShopPage />} />
         <Route path="/seller/shops/:id/products" element={<SellerProductsPage />} />
+        <Route path="/seller/products" element={<SellerProductsPage />} />
+        <Route path="/seller/appeal/:id" element={<AppealPage />} />
         <Route path="/seller/products/:id/edit" element={<EditProductPage />} />
         <Route path="/shop/:slug" element={<ShopPage />} />
         <Route path="/ratings/:productId" element={<RatingsPage />} />
         <Route path="/admin/ratings/reports" element={<ReportsPage />} />
         <Route path="/admin/appeals" element={<AppealsPage />} />
+        <Route path="/admin/settings" element={<SettingsPage />} />
         <Route path="/seller/analytics" element={<AnalyticsPage />} />
         <Route path="/seller/expenses" element={<ExpensesPage />} />
         <Route path="/seller/debts" element={<DebtsPage />} />
