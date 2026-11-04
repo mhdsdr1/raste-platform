@@ -80,10 +80,23 @@ export default function AppealsPage() {
                   <span className="text-xl">⚠️</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-gray-800">{a.title}</p>
+                    {a.image_url && (
+                      <img 
+                        src={a.image_url} 
+                        alt={a.title}
+                        className="mt-1 w-24 h-24 object-cover rounded-lg border cursor-pointer"
+                        onClick={() => window.open(a.image_url, '_blank')}
+                      />
+                    )}
                     <p className="text-[10px] text-gray-500 mt-0.5">فروشگاه: {a.shop_name}</p>
-                    <p className="text-[10px] text-red-600 mt-0.5">دلیل رد: {a.rejection_reason || 'نامشخص'}</p>
+                    {a.approval_status === 'pending_review' ? (
+                      <p className="text-[10px] text-orange-600 mt-0.5">⏳ در انتظار بررسی: {a.rejection_reason || 'متن مشکوک'}</p>
+                    ) : (
+                      <p className="text-[10px] text-red-600 mt-0.5">دلیل رد: {a.rejection_reason || 'نامشخص'}</p>
+                    )}
                   </div>
                 </div>
+                {a.appeal_text && (
                 <div className="bg-pink-50 rounded-lg p-2 mb-2">
                   <p className="text-[10px] text-gray-500 mb-0.5">📝 متن اعتراض:</p>
                   <p className="text-xs text-gray-700">{a.appeal_text}</p>
@@ -93,6 +106,7 @@ export default function AppealsPage() {
                     </a>
                   )}
                 </div>
+                )}
                 
                 {/* تاریخچه مکالمه */}
                 <div className="mb-2">
@@ -183,18 +197,40 @@ export default function AppealsPage() {
                       )}
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => review(a.id, 'accept')} className="flex-1 bg-green-500 text-white py-1.5 rounded-lg text-xs font-bold">✅ تایید و ارسال پاسخ</button>
-                      <button onClick={() => review(a.id, 'reject')} className="flex-1 bg-red-500 text-white py-1.5 rounded-lg text-xs font-bold">❌ رد و ارسال پاسخ</button>
+                      <button 
+                        onClick={async () => {
+                          try {
+                            const formData = new FormData();
+                            formData.append('action', 'respond');
+                            if (adminResponse) formData.append('admin_response', adminResponse);
+                            formData.append('allow_appeal_attachment', allowAttachment ? 'true' : 'false');
+                            formData.append('appeal_attachment_max_size_mb', attachmentMaxSize);
+                            await api.patch(`/shops/appeals/${a.id}/review/`, formData, {
+                              headers: { 'Content-Type': 'multipart/form-data' }
+                            });
+                            toast.success('پاسخ ارسال شد');
+                            setAdminResponse('');
+                            setAllowAttachment(false);
+                            setAttachmentMaxSize(1);
+                            setRespondingTo(null);
+                            fetchAppeals();
+                          } catch (e) {
+                            toast.error(e?.response?.data?.error || 'خطا');
+                          }
+                        }}
+                        className="flex-1 bg-blue-500 text-white py-1.5 rounded-lg text-xs font-bold"
+                      >
+                        📤 ارسال پاسخ
+                      </button>
                       <button onClick={() => { setRespondingTo(null); setAdminResponse(''); }} className="bg-gray-200 text-gray-600 px-3 rounded-lg text-xs font-bold">لغو</button>
                     </div>
                   </div>
                 ) : (
-                  <button 
-                    onClick={() => setRespondingTo(a.id)} 
-                    className="w-full bg-gray-100 text-gray-700 py-1.5 rounded-lg text-xs font-bold"
-                  >
-                    📩 پاسخ به فروشنده
-                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={() => review(a.id, 'accept')} className="flex-1 bg-green-500 text-white py-1.5 rounded-lg text-xs font-bold">✅ تایید</button>
+                    <button onClick={() => review(a.id, 'reject')} className="flex-1 bg-red-500 text-white py-1.5 rounded-lg text-xs font-bold">❌ رد</button>
+                    <button onClick={() => setRespondingTo(a.id)} className="flex-1 bg-blue-500 text-white py-1.5 rounded-lg text-xs font-bold">📩 پاسخ</button>
+                  </div>
                 )}
               </div>
             ))}

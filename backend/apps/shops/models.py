@@ -170,6 +170,7 @@ class Product(models.Model):
         ('pending', 'در انتظار بررسی'),
         ('accepted', 'پذیرفته شد'),
         ('rejected', 'رد شد'),
+        ('responded', 'پاسخ داده شد'),
     ]
     appeal_status = models.CharField(
         max_length=20,

@@ -149,6 +149,10 @@ def me(request):
     data['monthly_product_limit'] = user.monthly_product_limit
     data['monthly_service_limit'] = user.monthly_service_limit
     data['is_staff'] = user.is_staff
+    data['role'] = user.role
+    data['is_owner'] = user.is_owner
+    data['is_admin'] = user.is_admin
+    data['can_access_control'] = user.can_access_control
     return Response(data)
 
 # ═══════════════════════════════════════════════════════════

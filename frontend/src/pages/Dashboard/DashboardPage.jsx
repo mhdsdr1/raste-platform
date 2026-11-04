@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { 
   User, Package, Star, Wallet, Store, Truck, 
   MessageCircle, Gift, Ticket, LogOut, ChevronLeft,
-  ShoppingBag, Clock, CheckCircle, XCircle, BarChart3
+  ShoppingBag, Clock, CheckCircle, XCircle, BarChart3, Shield
 } from 'lucide-react';
 import api from '../../services/api';
 import JalaliCalendar from '../../components/JalaliCalendar';
@@ -85,6 +85,9 @@ export default function DashboardPage() {
     { icon: Gift, label: 'باشگاه مشتریان', href: '/loyalty', color: 'text-red-600' },
     { icon: Ticket, label: 'کدهای تخفیف', href: '/discounts', color: 'text-green-600' },
     { icon: Wallet, label: 'کیف پول', href: '/wallet', color: 'text-indigo-600' },
+    ...(user?.can_access_control ? [
+      { icon: Shield, label: 'مرکز کنترل', href: '/admin/control', color: 'text-red-600' },
+    ] : []),
   ];
 
   return (

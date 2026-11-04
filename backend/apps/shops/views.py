@@ -162,17 +162,31 @@ def create_product(request, shop_id):
                 print('Notif error:', e)
         elif result['status'] == 'pending_review':
             product.approval_status = 'pending_review'
+            product.rejection_reason = result['reason']
             product.is_visible = False
             try:
-                from apps.users.models import Notification
+                from apps.users.models import Notification, User
+                print('DEBUG: creating seller notif for', request.user.phone)
                 Notification.create_notif(
                     user=request.user,
                     title='⏳ آگهی شما در انتظار بررسی',
-                    message=f'آگهی «{product.title}» در صف بررسی دستی قرار گرفت. حداکثر ۲۴ ساعت آینده نتیجه اعلام می‌شود.',
+                    message=f'آگهی «{product.title}» به دلیل وجود متن در عکس، در صف بررسی دستی قرار گرفت. حداکثر ۲۴ ساعت آینده نتیجه اعلام می‌شود.',
                     notif_type='system',
                     link='/seller/products',
                     icon='⏳',
                 )
+                # نوتیف به ادمین‌ها (به جز خود فروشنده)
+                admin_list = User.objects.filter(is_staff=True).exclude(id=request.user.id)
+                print('DEBUG: admin list =', [a.phone for a in admin_list])
+                for admin in admin_list:
+                    Notification.create_notif(
+                        user=admin,
+                        title='⚠️ محصول نیازمند بررسی',
+                        message=f'محصول «{product.title}» حاوی متن در عکس است و نیازمند بررسی دستی است.',
+                        notif_type='alert',
+                        link='/admin/appeals',
+                        icon='⚠️',
+                    )
             except Exception as e:
                 print('Notif error:', e)
         
@@ -1024,7 +1038,11 @@ def list_appeals(request):
         return Response({'error': 'دسترسی ندارید'}, status=status.HTTP_403_FORBIDDEN)
     from .models import Product
     from .serializers import ProductSerializer
-    products = Product.objects.filter(appeal_status='pending').order_by('-appeal_created_at')
+    from django.db.models import Q
+    products = Product.objects.filter(
+        Q(appeal_status='pending') | 
+        Q(approval_status='pending_review', appeal_status='none')
+    ).order_by('-created_at')
     return Response({'appeals': ProductSerializer(products, many=True).data, 'count': products.count()})
 
 
@@ -1055,8 +1073,11 @@ def review_appeal(request, product_id):
         if admin_notes:
             product.rejection_reason = admin_notes
         msg = 'اعتراض رد شد'
+    elif action == 'respond':
+        product.appeal_status = 'responded'
+        msg = 'پاسخ ارسال شد'
     else:
-        return Response({'error': 'action باید accept یا reject باشد'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'action باید accept یا reject یا respond باشد'}, status=status.HTTP_400_BAD_REQUEST)
     
     if admin_response:
         product.admin_response = admin_response
@@ -1206,4 +1227,71 @@ def appeal_messages(request, product_id):
         'product_id': product.id,
         'product_title': product.title,
         'messages': result,
+    })
+
+@extend_schema(description='درخت کاربران → فروشگاه‌ها → محصولات (ادمین)')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_tree(request):
+    """درخت کامل برای مرکز کنترل - فقط ادمین/مدیر"""
+    if not request.user.can_access_control:
+        return Response({'error': 'دسترسی ندارید'}, status=status.HTTP_403_FORBIDDEN)
+    
+    from apps.users.models import User
+    from .models import Shop, Product
+    from django.db.models import Q, Count
+    
+    search = request.query_params.get('search', '').strip()
+    
+    # لیست کاربران (فقط کسانی که فروشگاه دارن یا ادمین/مدیرن)
+    users_qs = User.objects.filter(
+        Q(shops__isnull=False) | Q(role__in=['admin', 'owner'])
+    ).distinct()
+    
+    if search:
+        users_qs = users_qs.filter(
+            Q(phone__icontains=search) |
+            Q(first_name__icontains=search) |
+            Q(last_name__icontains=search) |
+            Q(national_id__icontains=search)
+        )
+    
+    users_qs = users_qs.order_by('-created_at')[:50]  # محدودیت ۵۰ کاربر
+    
+    result = []
+    for u in users_qs:
+        shops = Shop.objects.filter(owner=u)
+        shops_data = []
+        for s in shops:
+            products = Product.objects.filter(shop=s).order_by('-created_at')[:100]
+            products_data = [{
+                'id': p.id,
+                'title': p.title,
+                'price': float(p.price) if p.price else 0,
+                'approval_status': p.approval_status,
+                'is_visible': p.is_visible,
+            } for p in products]
+            
+            shops_data.append({
+                'id': s.id,
+                'name': s.name,
+                'is_active': s.is_active,
+                'products_count': Product.objects.filter(shop=s).count(),
+                'products': products_data,
+            })
+        
+        result.append({
+            'id': u.id,
+            'phone': u.phone,
+            'full_name': u.get_full_name() or '',
+            'role': u.role,
+            'is_blocked': u.is_blocked,
+            'shops': shops_data,
+            'shops_count': len(shops_data),
+            'total_products': sum(s['products_count'] for s in shops_data),
+        })
+    
+    return Response({
+        'users': result,
+        'total': users_qs.count(),
     })

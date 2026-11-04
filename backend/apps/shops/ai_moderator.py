@@ -120,14 +120,21 @@ def normalize_text(text):
 
 def check_text_with_keywords(text):
     """بررسی سریع با کلمات ممنوعه (شامل کلمات مخفی)"""
+    import re
     text_lower = text.lower()
     text_normalized = normalize_text(text_lower)
     
     found = []
     
     for kw in FORBIDDEN_KEYWORDS:
-        if kw.lower() in text_lower:
-            found.append(kw)
+        kw_lower = kw.lower()
+        if len(kw_lower) < 4:
+            pattern = r'(?<![آ-یa-zA-Z0-9])' + re.escape(kw_lower) + r'(?![آ-یa-zA-Z0-9])'
+            if re.search(pattern, text_lower):
+                found.append(kw)
+        else:
+            if kw_lower in text_lower:
+                found.append(kw)
     
     for pattern in HIDDEN_PATTERNS:
         pattern_normalized = normalize_text(pattern)
@@ -188,6 +195,51 @@ def check_image_with_nemotron(image_file):
         return {'status': 'error', 'reason': str(e)}
 
 
+
+
+def check_image_with_ocr(image_file):
+    """بررسی متن داخل عکس با Tesseract OCR (با پیش‌پردازش)"""
+    try:
+        import pytesseract
+        from PIL import Image, ImageEnhance, ImageFilter
+        
+        image_file.seek(0)
+        img = Image.open(image_file)
+        
+        # پیش‌پردازش
+        if img.width < 1200:
+            ratio = 1200 / img.width
+            img = img.resize((int(img.width * ratio), int(img.height * ratio)), Image.LANCZOS)
+        img = img.convert('L')
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(2.0)
+        img = img.filter(ImageFilter.MedianFilter(3))
+        
+        # OCR با psm 6 (فرض یک بلوک متن)
+        text = pytesseract.image_to_string(img, lang='fas+eng', config='--psm 4')
+        image_file.seek(0)
+        
+        if not text.strip():
+            return {'status': 'safe', 'reason': 'no_text', 'extracted_text': ''}
+        
+        kw_result = check_text_with_keywords(text)
+        if kw_result['status'] == 'rejected':
+            return {
+                'status': 'rejected',
+                'reason': kw_result.get('reason', ''),
+                'extracted_text': text[:300],
+            }
+        
+        return {
+            'status': 'suspicious',
+            'reason': f'متن مشکوک در عکس: {text[:300]}',
+            'extracted_text': text[:300],
+        }
+    except Exception as e:
+        print('OCR error:', e)
+        return {'status': 'error', 'reason': str(e)}
+
+
 def moderate_product(title, description, image_file=None):
     """
     بررسی کامل یک محصول
@@ -235,6 +287,26 @@ def moderate_product(title, description, image_file=None):
                 'reason': f'بررسی خودکار ممکن نشد: {avalai_result.get("reason", "خطا")}',
                 'layers': results,
             }
+    
+    # ═══ لایه ۲.۵: OCR (متن داخل عکس) ═══
+    if image_file:
+        try:
+            ocr_result = check_image_with_ocr(image_file)
+            results['ocr'] = ocr_result
+            if ocr_result['status'] == 'rejected':
+                return {
+                    'status': 'rejected',
+                    'reason': ocr_result['reason'],
+                    'layers': results,
+                }
+            if ocr_result['status'] == 'suspicious':
+                return {
+                    'status': 'pending_review',
+                    'reason': ocr_result['reason'],
+                    'layers': results,
+                }
+        except Exception as e:
+            print('OCR layer error:', e)
     
     # ═══ لایه ۳: Nemotron (عکس) ═══
     if image_file and os.getenv('HERMOUZ_API_KEY'):

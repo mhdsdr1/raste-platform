@@ -43,6 +43,15 @@ class User(AbstractUser):
     is_blocked = models.BooleanField(default=False, verbose_name='مسدود شده؟')
     blocked_reason = models.TextField(null=True, blank=True, verbose_name='دلیل مسدودیت')
     
+    # نقش و دسترسی‌ها
+    ROLE_CHOICES = [
+        ('user', 'کاربر عادی'),
+        ('admin', 'ادمین'),
+        ('owner', 'مدیر'),
+    ]
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user', verbose_name='نقش')
+    admin_permissions = models.JSONField(default=dict, blank=True, verbose_name='دسترسی‌های ادمین')
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='تاریخ عضویت')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='آخرین به‌روزرسانی')
     
@@ -57,6 +66,22 @@ class User(AbstractUser):
     
     def __str__(self):
         return f"{self.get_full_name() or self.username} ({self.phone})"
+    
+    @property
+    def is_owner(self):
+        return self.role == 'owner' or self.is_superuser
+    
+    @property
+    def is_admin(self):
+        return self.role == 'admin' or self.role == 'owner' or self.is_superuser
+    
+    @property
+    def can_access_control(self):
+        if self.is_owner:
+            return True
+        if self.role == 'admin':
+            return self.admin_permissions.get('can_access_control', False)
+        return False
     
     @property
     def is_seller(self):

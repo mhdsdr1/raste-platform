@@ -18,6 +18,7 @@ const ShopPage = lazy(() => import('./pages/Shop/ShopPage.jsx'));
 const RatingsPage = lazy(() => import('./pages/Ratings/RatingsPage.jsx'));
 const ReportsPage = lazy(() => import('./pages/Ratings/ReportsPage.jsx'));
 const AppealsPage = lazy(() => import('./pages/Admin/AppealsPage.jsx'));
+const ControlCenterPage = lazy(() => import('./pages/Admin/ControlCenterPage.jsx'));
 const AppealPage = lazy(() => import('./pages/Seller/AppealPage.jsx'));
 const SettingsPage = lazy(() => import('./pages/Admin/SettingsPage.jsx'));
 const AnalyticsPage = lazy(() => import('./pages/Seller/AnalyticsPage.jsx'));
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="/ratings/:productId" element={<RatingsPage />} />
         <Route path="/admin/ratings/reports" element={<ReportsPage />} />
         <Route path="/admin/appeals" element={<AppealsPage />} />
+        <Route path="/admin/control" element={<ControlCenterPage />} />
         <Route path="/admin/settings" element={<SettingsPage />} />
         <Route path="/seller/analytics" element={<AnalyticsPage />} />
         <Route path="/seller/expenses" element={<ExpensesPage />} />

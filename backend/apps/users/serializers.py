@@ -92,8 +92,9 @@ class UserSerializer(serializers.ModelSerializer):
             'email', 'national_id', 'user_type', 'user_type_display',
             'avatar', 'birthday', 'preferred_contact', 'subscription_plan',
             'is_active', 'is_blocked', 'created_at',
+            'role', 'is_owner', 'is_admin', 'can_access_control',
         ]
-        read_only_fields = ['id', 'phone', 'user_type', 'created_at', 'is_active', 'is_blocked']
+        read_only_fields = ['id', 'phone', 'user_type', 'created_at', 'is_active', 'is_blocked', 'role', 'is_owner', 'is_admin', 'can_access_control']
 
 class NotificationSerializer(serializers.ModelSerializer):
     notif_type_display = serializers.CharField(source='get_notif_type_display', read_only=True)
