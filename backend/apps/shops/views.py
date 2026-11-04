@@ -1253,17 +1253,29 @@ def admin_tree(request):
             Q(phone__icontains=search) |
             Q(first_name__icontains=search) |
             Q(last_name__icontains=search) |
-            Q(national_id__icontains=search)
-        )
+            Q(national_id__icontains=search) |
+            Q(shops__name__icontains=search) |
+            Q(shops__products__title__icontains=search)
+        ).distinct()
     
     users_qs = users_qs.order_by('-created_at')[:50]  # محدودیت ۵۰ کاربر
     
     result = []
     for u in users_qs:
         shops = Shop.objects.filter(owner=u)
+        # اگه جستجو روی فروشگاه/محصول بود، فقط فروشگاه‌های مرتبط رو نشون بده
+        if search:
+            shops = shops.filter(
+                Q(name__icontains=search) |
+                Q(products__title__icontains=search)
+            ).distinct()
+        
         shops_data = []
         for s in shops:
-            products = Product.objects.filter(shop=s).order_by('-created_at')[:100]
+            products = Product.objects.filter(shop=s).order_by('-created_at')
+            if search:
+                products = products.filter(title__icontains=search)
+            products = products[:100]
             products_data = [{
                 'id': p.id,
                 'title': p.title,
