@@ -116,22 +116,42 @@ def verify_otp(request):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        # چک بن تا تاریخ
+        if user.is_currently_banned:
+            import jdatetime
+            try:
+                local_dt = timezone.localtime(user.banned_until)
+                jalali_date = jdatetime.datetime.fromgregorian(datetime=local_dt).strftime('%Y/%m/%d')
+                jalali_time = local_dt.strftime('%H:%M')
+            except Exception:
+                jalali_date = user.banned_until.strftime('%Y-%m-%d')
+                jalali_time = user.banned_until.strftime('%H:%M')
+            
+            return Response(
+                {'error': f'شما توسط مدیر تا تاریخ {jalali_date} ساعت {jalali_time} مسدود شده‌اید.' + (f' دلیل: {user.ban_reason}' if user.ban_reason else '')},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # اگه بن منقضی شده، خودکار آزاد کن
+        if user.banned_until and not user.is_currently_banned:
+            user.banned_until = None
+            user.ban_reason = ''
+            user.is_blocked = False
+            user.blocked_reason = ''
+            user.save()
+        
         message = 'ورود با موفقیت انجام شد.'
     
     from rest_framework_simplejwt.tokens import RefreshToken
     refresh = RefreshToken.for_user(user)
     
+    from .serializers import UserSerializer
+    
     return Response({
         'message': message,
         'access_token': str(refresh.access_token),
         'refresh_token': str(refresh),
-        'user': {
-            'id': user.id,
-            'phone': user.phone,
-            'user_type': user.user_type,
-            'subscription_plan': user.subscription_plan,
-            'subscription_expiry': user.subscription_expiry,
-        }
+        'user': UserSerializer(user).data,
     })
 
 

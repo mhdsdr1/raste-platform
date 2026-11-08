@@ -43,6 +43,15 @@ class User(AbstractUser):
     is_blocked = models.BooleanField(default=False, verbose_name='مسدود شده؟')
     blocked_reason = models.TextField(null=True, blank=True, verbose_name='دلیل مسدودیت')
     
+    # هشدار
+    warnings_count = models.IntegerField(default=0, verbose_name='تعداد هشدارها')
+    last_warning_at = models.DateTimeField(null=True, blank=True, verbose_name='تاریخ آخرین هشدار')
+    last_warning_message = models.TextField(blank=True, default='', verbose_name='متن آخرین هشدار')
+    
+    # بن
+    banned_until = models.DateTimeField(null=True, blank=True, verbose_name='بن تا تاریخ')
+    ban_reason = models.TextField(blank=True, default='', verbose_name='دلیل بن')
+    
     # نقش و دسترسی‌ها
     ROLE_CHOICES = [
         ('user', 'کاربر عادی'),
@@ -66,6 +75,14 @@ class User(AbstractUser):
     
     def __str__(self):
         return f"{self.get_full_name() or self.username} ({self.phone})"
+    
+    @property
+    def is_currently_banned(self):
+        """آیا الان بن است؟"""
+        from django.utils import timezone
+        if not self.banned_until:
+            return False
+        return self.banned_until > timezone.now()
     
     @property
     def is_owner(self):

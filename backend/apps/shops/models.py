@@ -156,6 +156,10 @@ class Product(models.Model):
         ('rejected', 'رد شده'),
         ('pending_review', 'نیازمند بررسی دستی'),
     ]
+    is_deleted = models.BooleanField(default=False, verbose_name='حذف شده')
+    deleted_at = models.DateTimeField(null=True, blank=True, verbose_name='تاریخ حذف')
+    delete_reason = models.TextField(blank=True, default='', verbose_name='دلیل حذف')
+    
     approval_status = models.CharField(
         max_length=20,
         choices=APPROVAL_STATUS_CHOICES,
@@ -244,13 +248,6 @@ class SellerExpense(models.Model):
         on_delete=models.CASCADE,
         related_name='expenses',
         verbose_name='فروشنده'
-    )
-    shop = models.ForeignKey(
-        'shops.Shop',
-        on_delete=models.CASCADE,
-        related_name='expenses',
-        null=True, blank=True,
-        verbose_name='فروشگاه'
     )
     title = models.CharField(max_length=100, verbose_name='عنوان')
     icon = models.CharField(max_length=10, blank=True, default='', verbose_name='آیکون')

@@ -205,6 +205,10 @@ export default function SellerProductsPage() {
   };
 
   const toggleVisibility = async (product) => {
+    if (product.is_deleted) {
+      toast.error('این محصول توسط مدیر پنهان شده و قابل نمایش نیست');
+      return;
+    }
     setProducts(prev => prev.map(p => p.id === product.id ? { ...p, is_visible: !p.is_visible } : p));
     try { await api.patch(`/shops/products/${product.id}/update/`, { is_visible: !product.is_visible }); } catch (err) {}
   };
@@ -391,8 +395,15 @@ export default function SellerProductsPage() {
                   </div>
                   <Link to={`/seller/products/${product.id}/edit`} className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">✏️</Link>
                   <button onClick={() => handleDelete(product)} className="w-9 h-9 bg-red-50 text-red-600 rounded-xl flex items-center justify-center">🗑️</button>
-                  <button onClick={() => toggleVisibility(product)} className={`w-9 h-9 rounded-xl flex items-center justify-center ${product.is_visible ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
-                    {product.is_visible ? <Eye size={16} /> : <EyeOff size={16} />}
+                  <button 
+                    onClick={() => toggleVisibility(product)} 
+                    disabled={product.is_deleted}
+                    title={product.is_deleted ? 'پنهان شده توسط مدیر' : (product.is_visible ? 'نمایش' : 'پنهان')}
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                      product.is_deleted ? 'bg-gray-200 text-gray-500 cursor-not-allowed' :
+                      product.is_visible ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'
+                    }`}>
+                    {product.is_deleted ? <EyeOff size={16} /> : (product.is_visible ? <Eye size={16} /> : <EyeOff size={16} />)}
                   </button>
                 </motion.div>
               );
@@ -415,8 +426,14 @@ export default function SellerProductsPage() {
                     <div className="flex gap-1 mt-2">
                       <Link to={`/seller/products/${product.id}/edit`} className="flex-1 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold text-center">✏️</Link>
                       <button onClick={() => handleDelete(product)} className="flex-1 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold">🗑️</button>
-                      <button onClick={() => toggleVisibility(product)} className={`flex-1 py-1.5 rounded-lg text-xs ${product.is_visible ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
-                        {product.is_visible ? '👁️' : '🙈'}
+                      <button 
+                        onClick={() => toggleVisibility(product)} 
+                        disabled={product.is_deleted}
+                        className={`flex-1 py-1.5 rounded-lg text-xs ${
+                          product.is_deleted ? 'bg-gray-200 text-gray-500 cursor-not-allowed' :
+                          product.is_visible ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'
+                        }`}>
+                        {product.is_deleted ? '🚫' : (product.is_visible ? '👁️' : '🙈')}
                       </button>
                     </div>
                   </div>

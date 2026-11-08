@@ -378,16 +378,29 @@ export default function SellerShopsPage() {
           </div>
         ) : (
           <motion.div variants={stagger} initial="initial" animate="animate" className="space-y-4">
-            {shops.map((shop) => (
+            {shops.map((shop) => {
+              const isInactive = shop.is_active === false;
+              return (
               <motion.div key={shop.id} variants={fadeIn}
-                className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                className={`bg-white rounded-2xl p-6 border shadow-sm transition-all ${
+                  isInactive ? 'border-red-200 opacity-60' : 'border-gray-100 hover:shadow-md'
+                }`}>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-pink-400 to-pink-600 rounded-2xl flex items-center justify-center text-white text-xl font-bold flex-shrink-0 overflow-hidden">
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white text-xl font-bold flex-shrink-0 overflow-hidden ${
+                      isInactive ? 'bg-gray-400' : 'bg-gradient-to-br from-pink-400 to-pink-600'
+                    }`}>
                       {shop.logo_url ? <img src={shop.logo_url} alt={shop.name} className="w-full h-full object-cover" /> : shop.name?.[0] || 'ف'}
                     </div>
                     <div>
-                      <h3 className="font-extrabold text-gray-800 text-lg">{shop.name}</h3>
+                      <h3 className={`font-extrabold text-lg ${isInactive ? 'text-gray-500' : 'text-gray-800'}`}>
+                        {shop.name}
+                        {isInactive && (
+                          <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full mr-2 font-normal">
+                            🚫 غیرفعال
+                          </span>
+                        )}
+                      </h3>
                       <p className="text-xs text-gray-500 mt-0.5">raste.ir/{shop.slug}</p>
                       <div className="flex items-center gap-3 mt-2">
                         <span className="text-xs bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full">
@@ -398,21 +411,37 @@ export default function SellerShopsPage() {
                           {shop.active_products_count || 0} محصول
                         </span>
                       </div>
+                      {isInactive && (
+                        <p className="text-[10px] text-red-500 mt-1">این فروشگاه توسط مدیر غیرفعال شده است</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <Link to={`/seller/shops/${shop.id}/products`}
-                      className="w-9 h-9 bg-pink-50 hover:bg-pink-100 text-pink-600 rounded-xl flex items-center justify-center transition-all">
-                      <Package size={16} />
-                    </Link>
-                    <Link to={`/seller/shops/${shop.id}/edit`}
-                      className="w-9 h-9 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-xl flex items-center justify-center transition-all">
-                      <Edit3 size={16} />
-                    </Link>
+                    {isInactive ? (
+                      <span className="w-9 h-9 bg-gray-100 text-gray-400 rounded-xl flex items-center justify-center cursor-not-allowed">
+                        <Package size={16} />
+                      </span>
+                    ) : (
+                      <Link to={`/seller/shops/${shop.id}/products`}
+                        className="w-9 h-9 bg-pink-50 hover:bg-pink-100 text-pink-600 rounded-xl flex items-center justify-center transition-all">
+                        <Package size={16} />
+                      </Link>
+                    )}
+                    {isInactive ? (
+                      <span className="w-9 h-9 bg-gray-100 text-gray-400 rounded-xl flex items-center justify-center cursor-not-allowed">
+                        <Edit3 size={16} />
+                      </span>
+                    ) : (
+                      <Link to={`/seller/shops/${shop.id}/edit`}
+                        className="w-9 h-9 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-xl flex items-center justify-center transition-all">
+                        <Edit3 size={16} />
+                      </Link>
+                    )}
                   </div>
                 </div>
               </motion.div>
-            ))}
+              );
+            })}
           </motion.div>
         )}
       </main>

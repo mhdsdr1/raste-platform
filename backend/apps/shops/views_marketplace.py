@@ -33,6 +33,7 @@ def marketplace_search(request):
     # پایه کوئری
     products = Product.objects.select_related('shop', 'shop__owner').filter(
         is_visible=True,
+        is_deleted=False,
         buy_link_active=True,
         shop__is_active=True,
         approval_status='approved',

@@ -54,7 +54,7 @@ class ProductSerializer(serializers.ModelSerializer):
         'sizes',
             'buy_link_active', 'is_visible', 'is_stock',
             'created_at', 'updated_at',
-            'approval_status', 'rejection_reason', 'appeal_status', 'appeal_text', 'appeal_created_at', 'admin_response', 'admin_attachment_url', 'appeal_attachment_url', 'allow_appeal_attachment', 'appeal_attachment_max_size_mb'
+            'approval_status', 'rejection_reason', 'appeal_status', 'appeal_text', 'appeal_created_at', 'admin_response', 'admin_attachment_url', 'appeal_attachment_url', 'allow_appeal_attachment', 'appeal_attachment_max_size_mb', 'is_deleted'
         ]
         read_only_fields = ['id', 'shop', 'created_at', 'updated_at']
 

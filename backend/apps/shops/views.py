@@ -207,7 +207,7 @@ def list_products(request, shop_id):
         shop = Shop.objects.get(id=shop_id, is_active=True)
     except Shop.DoesNotExist:
         return Response({'error': 'فروشگاه یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
-    products = shop.products.filter(is_visible=True)
+    products = shop.products.filter(is_visible=True, is_deleted=False)
     return Response(ProductSerializer(products, many=True).data)
 
 
@@ -237,6 +237,9 @@ def update_product(request, product_id):
     for field in allowed:
         if field in request.data:
             value = request.data[field]
+            # اگه محصول پنهان شده (is_deleted)، فروشنده نمی‌تونه is_visible رو تغییر بده
+            if field == 'is_visible' and product.is_deleted:
+                continue
             if field in ['colors', 'sizes'] and isinstance(value, str):
                 import json
                 value = json.loads(value)
@@ -1282,6 +1285,7 @@ def admin_tree(request):
                 'price': float(p.price) if p.price else 0,
                 'approval_status': p.approval_status,
                 'is_visible': p.is_visible,
+                'is_deleted': p.is_deleted or not p.is_visible,
             } for p in products]
             
             shops_data.append({
@@ -1306,4 +1310,229 @@ def admin_tree(request):
     return Response({
         'users': result,
         'total': users_qs.count(),
+    })
+
+@extend_schema(description='عملیات گروهی ادمین (حذف/بن/هشدار/بازگردانی)')
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_bulk_action(request):
+    """عملیات گروهی روی کاربر/فروشگاه/محصول - فقط ادمین/مدیر"""
+    if not request.user.can_access_control:
+        return Response({'error': 'دسترسی ندارید'}, status=status.HTTP_403_FORBIDDEN)
+    
+    from apps.users.models import User
+    from .models import Shop, Product
+    from django.utils import timezone
+    
+    action = request.data.get('action')
+    items = request.data.get('items', [])
+    reason = request.data.get('reason', '')
+    banned_until = request.data.get('banned_until')  # 'YYYY-MM-DD'
+    
+    if action not in ['soft_delete', 'hard_delete', 'ban', 'warning', 'restore', 'history']:
+        return Response({'error': 'action نامعتبر'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not items:
+        return Response({'error': 'هیچ آیتمی انتخاب نشده'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    results = []
+    
+    for item in items:
+        try:
+            item_type = item.get('type')
+            item_id = item.get('id')
+            
+            if item_type == 'user':
+                obj = User.objects.get(id=item_id)
+                # فقط مدیر می‌تونه ادمین‌ها رو تغییر بده
+                if obj.role in ['admin', 'owner'] and not request.user.is_owner:
+                    results.append({'id': item_id, 'status': 'forbidden', 'name': item.get('name')})
+                    continue
+                
+                if action == 'soft_delete':
+                    obj.is_active = False
+                    obj.save()
+                elif action == 'ban':
+                    obj.is_blocked = True
+                    obj.blocked_reason = reason or 'بن توسط ادمین'
+                    # اگه تاریخ بن داده شده
+                    if banned_until:
+                        from datetime import datetime
+                        from zoneinfo import ZoneInfo
+                        iran_tz = ZoneInfo('Asia/Tehran')
+                        try:
+                            # فرمت کامل: 2026-11-15T18:30 (به وقت ایران)
+                            dt = datetime.fromisoformat(banned_until.replace('Z', '+00:00'))
+                            if dt.tzinfo is None:
+                                # naive → به وقت ایران تبدیل
+                                dt = dt.replace(tzinfo=iran_tz)
+                            obj.banned_until = dt
+                        except:
+                            try:
+                                # فقط تاریخ: 2026-11-15 (پیش‌فرض 23:59 ایران)
+                                dt = datetime.strptime(banned_until, '%Y-%m-%d').replace(hour=23, minute=59)
+                                obj.banned_until = dt.replace(tzinfo=iran_tz)
+                            except:
+                                pass
+                    obj.save()
+                    # نوتیف به کاربر
+                    try:
+                        from apps.users.models import Notification
+                        Notification.create_notif(
+                            user=obj,
+                            title='⛔ حساب شما مسدود شد',
+                            message=f'حساب شما توسط مدیر مسدود شد.' + (f' دلیل: {reason}' if reason else '') + (f' تا تاریخ: {banned_until}' if banned_until else ''),
+                            notif_type='alert',
+                            link='/dashboard',
+                            icon='⛔',
+                        )
+                    except Exception as e:
+                        print('Ban notif error:', e)
+                elif action == 'warning':
+                    from django.utils import timezone
+                    obj.warnings_count = (obj.warnings_count or 0) + 1
+                    obj.last_warning_at = timezone.now()
+                    obj.last_warning_message = reason or ''
+                    obj.save()
+                    # نوتیف به کاربر
+                    try:
+                        from apps.users.models import Notification
+                        Notification.create_notif(
+                            user=obj,
+                            title='⚠️ هشدار از طرف مدیر',
+                            message=reason or 'شما یک هشدار از طرف مدیر دریافت کردید. در صورت تکرار، حساب شما مسدود خواهد شد.',
+                            notif_type='alert',
+                            link='/dashboard',
+                            icon='⚠️',
+                        )
+                    except Exception as e:
+                        print('Warning notif error:', e)
+                elif action == 'restore':
+                    obj.is_blocked = False
+                    obj.is_active = True
+                    obj.blocked_reason = ''
+                    obj.banned_until = None
+                    obj.save()
+                else:
+                    obj.save()
+            
+            elif item_type == 'shop':
+                obj = Shop.objects.get(id=item_id)
+                if action == 'soft_delete':
+                    obj.is_active = False
+                    obj.save()
+                    # نوتیف به فروشنده
+                    try:
+                        from apps.users.models import Notification
+                        Notification.create_notif(
+                            user=obj.owner,
+                            title='🚫 فروشگاه شما غیرفعال شد',
+                            message=f'فروشگاه «{obj.name}» توسط مدیر غیرفعال شد.' + (f' دلیل: {reason}' if reason else ''),
+                            notif_type='alert',
+                            link='/seller/shops',
+                            icon='🚫',
+                        )
+                    except Exception as e:
+                        print('Shop notif error:', e)
+                elif action == 'ban':
+                    obj.is_active = False
+                    obj.save()
+                    try:
+                        from apps.users.models import Notification
+                        Notification.create_notif(
+                            user=obj.owner,
+                            title='⛔ فروشگاه شما مسدود شد',
+                            message=f'فروشگاه «{obj.name}» توسط مدیر مسدود شد.' + (f' دلیل: {reason}' if reason else ''),
+                            notif_type='alert',
+                            link='/seller/shops',
+                            icon='⛔',
+                        )
+                    except Exception as e:
+                        print('Shop notif error:', e)
+                elif action == 'restore':
+                    obj.is_active = True
+                    obj.save()
+                    try:
+                        from apps.users.models import Notification
+                        Notification.create_notif(
+                            user=obj.owner,
+                            title='✅ فروشگاه شما فعال شد',
+                            message=f'فروشگاه «{obj.name}» توسط مدیر مجدداً فعال شد.',
+                            notif_type='order',
+                            link='/seller/shops',
+                            icon='✅',
+                        )
+                    except Exception as e:
+                        print('Shop notif error:', e)
+                else:
+                    obj.save()
+            
+            elif item_type == 'product':
+                obj = Product.objects.get(id=item_id)
+                if action == 'soft_delete':
+                    obj.is_deleted = True
+                    obj.is_visible = False
+                    obj.deleted_at = timezone.now()
+                    obj.delete_reason = reason or 'حذف توسط ادمین'
+                    obj.save()
+                    # نوتیف به فروشنده
+                    try:
+                        from apps.users.models import Notification
+                        Notification.create_notif(
+                            user=obj.shop.owner,
+                            title='🚫 محصول شما غیرفعال شد',
+                            message=f'محصول «{obj.title}» توسط مدیر غیرفعال شد.' + (f' دلیل: {reason}' if reason else ''),
+                            notif_type='alert',
+                            link='/seller/products',
+                            icon='🚫',
+                        )
+                    except Exception as e:
+                        print('Delete notif error:', e)
+                elif action == 'hard_delete':
+                    # حذف کامل از دیتابیس
+                    owner = obj.shop.owner
+                    product_title = obj.title
+                    obj.delete()
+                    # نوتیف به فروشنده
+                    try:
+                        from apps.users.models import Notification
+                        Notification.create_notif(
+                            user=owner,
+                            title='🗑️ محصول شما حذف شد',
+                            message=f'محصول «{product_title}» توسط مدیر به طور کامل حذف شد.' + (f' دلیل: {reason}' if reason else ''),
+                            notif_type='alert',
+                            link='/seller/products',
+                            icon='🗑️',
+                        )
+                    except Exception as e:
+                        print('Hard delete notif error:', e)
+                elif action == 'restore':
+                    obj.is_deleted = False
+                    obj.is_visible = True
+                    obj.deleted_at = None
+                    obj.delete_reason = ''
+                    obj.save()
+                    # نوتیف به فروشنده
+                    try:
+                        from apps.users.models import Notification
+                        Notification.create_notif(
+                            user=obj.shop.owner,
+                            title='✅ محصول شما بازگردانی شد',
+                            message=f'محصول «{obj.title}» توسط مدیر بازگردانی شد و مجدداً قابل نمایش است.',
+                            notif_type='order',
+                            link='/seller/products',
+                            icon='✅',
+                        )
+                    except Exception as e:
+                        print('Restore notif error:', e)
+            
+            results.append({'id': item_id, 'type': item_type, 'name': item.get('name'), 'status': 'ok'})
+        except Exception as e:
+            results.append({'id': item.get('id'), 'type': item.get('type'), 'name': item.get('name'), 'status': 'error', 'error': str(e)})
+    
+    return Response({
+        'action': action,
+        'results': results,
+        'success_count': sum(1 for r in results if r['status'] == 'ok'),
+        'error_count': sum(1 for r in results if r['status'] != 'ok'),
     })
