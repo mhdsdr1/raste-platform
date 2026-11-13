@@ -108,6 +108,19 @@ def create_product(request, shop_id):
             )
         except Exception as e:
             print('Notif error:', e)
+        # ثبت سابقه + امتیاز منفی + گزارش
+        try:
+            log_admin_action(None, 'ai_reject', 'product', product.id, product.title,
+                             reason='دسته‌بندی ممنوع', affected_user=request.user)
+            from .models import UserReport
+            UserReport.objects.create(
+                reporter=None, reporter_type='ai',
+                target_type='product', target_id=product.id, target_name=product.title,
+                reason='دسته‌بندی ممنوع: ' + category,
+                status='pending',
+            )
+        except Exception as e:
+            print('Log error:', e)
         return Response(ProductSerializer(product).data, status=status.HTTP_201_CREATED)
     
     if category in Product.HIGH_RISK_CATEGORIES:
@@ -129,6 +142,12 @@ def create_product(request, shop_id):
                 )
         except Exception as e:
             print('Notif error:', e)
+        # ثبت سابقه (بدون امتیاز منفی چون هنوز تایید نشده)
+        try:
+            log_admin_action(None, 'ai_reject', 'product', product.id, product.title,
+                             reason='دسته پرخطر - نیازمند تایید', score_delta=0)
+        except Exception as e:
+            print('Log error:', e)
         return Response(ProductSerializer(product).data, status=status.HTTP_201_CREATED)
     
     # ═══ بررسی خودکار با AI ═══
@@ -160,6 +179,19 @@ def create_product(request, shop_id):
                 )
             except Exception as e:
                 print('Notif error:', e)
+            # ثبت سابقه + امتیاز منفی + گزارش
+            try:
+                log_admin_action(None, 'ai_reject', 'product', product.id, product.title,
+                                 reason=result['reason'] or 'رد توسط AI', affected_user=request.user)
+                from .models import UserReport
+                UserReport.objects.create(
+                    reporter=None, reporter_type='ai',
+                    target_type='product', target_id=product.id, target_name=product.title,
+                    reason=result['reason'] or 'رد توسط AI',
+                    status='pending',
+                )
+            except Exception as e:
+                print('Log error:', e)
         elif result['status'] == 'pending_review':
             product.approval_status = 'pending_review'
             product.rejection_reason = result['reason']
@@ -189,6 +221,19 @@ def create_product(request, shop_id):
                     )
             except Exception as e:
                 print('Notif error:', e)
+            # ثبت سابقه + گزارش (بدون امتیاز منفی)
+            try:
+                log_admin_action(None, 'ai_reject', 'product', product.id, product.title,
+                                 reason='متن مشکوک در عکس - نیازمند بررسی', score_delta=0)
+                from .models import UserReport
+                UserReport.objects.create(
+                    reporter=None, reporter_type='ai',
+                    target_type='product', target_id=product.id, target_name=product.title,
+                    reason=result['reason'] or 'متن مشکوک در عکس',
+                    status='pending',
+                )
+            except Exception as e:
+                print('Log error:', e)
         
         product.save()
     except Exception as e:
@@ -1232,6 +1277,89 @@ def appeal_messages(request, product_id):
         'messages': result,
     })
 
+
+
+# ═══════════════════════════════════════════════════════════════
+#                    تابع کمکی ثبت سابقه و امتیاز
+# ═══════════════════════════════════════════════════════════════
+
+# جدول امتیاز منفی هر عملیات (قابل تغییر در آینده)
+SCORE_PENALTIES = {
+    'soft_delete': 0,       # پنهان کردن → امتیاز منفی نداره
+    'hard_delete': 0,       # حذف کامل → امتیاز منفی نداره
+    'ban': -5,              # بن → -5 (پیش‌فرض؛ برای بن ۷ روزه بیشتر)
+    'warning': -3,          # هشدار → -3
+    'ai_reject': -1,        # رد توسط AI → -1
+    'report_confirmed': -5, # گزارش تاییدشده → -5
+}
+
+
+def log_admin_action(admin, action, target_type, target_id, target_name='', reason='', extra=None, score_delta=0, affected_user=None):
+    """
+    ثبت سابقه عملیات + اعمال امتیاز منفی (در صورت نیاز)
+    
+    - admin: ادمین انجام‌دهنده (می‌تونه None باشه برای AI)
+    - action: نوع عملیات (soft_delete, ban, ...)
+    - target_type: user, shop, product, report
+    - target_id: شناسه هدف
+    - score_delta: تغییر امتیاز (اگه 0 باشه، از SCORE_PENALTIES خونده می‌شه)
+    - affected_user: کاربری که امتیازش تغییر می‌کنه (اگه None باشه و target_type='user'، خود target_id)
+    """
+    from .models import AdminLog, UserScore
+    from apps.users.models import User
+    
+    # تعیین امتیاز
+    if score_delta == 0 and action in SCORE_PENALTIES:
+        score_delta = SCORE_PENALTIES[action]
+    
+    log = AdminLog.objects.create(
+        admin=admin,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        target_name=target_name or '',
+        reason=reason or '',
+        extra=extra or {},
+        score_delta=score_delta,
+    )
+    
+    # اعمال امتیاز منفی
+    if score_delta != 0:
+        # تعیین کاربر هدف
+        user = affected_user
+        if user is None and target_type == 'user':
+            try:
+                user = User.objects.get(id=target_id)
+            except User.DoesNotExist:
+                pass
+        elif user is None and target_type == 'shop':
+            try:
+                from .models import Shop
+                shop = Shop.objects.get(id=target_id)
+                user = shop.owner
+            except Exception:
+                pass
+        elif user is None and target_type == 'product':
+            try:
+                from .models import Product
+                product = Product.objects.get(id=target_id)
+                user = product.shop.owner
+            except Exception:
+                pass
+        
+        if user:
+            user.score = (user.score or 0) + score_delta
+            user.save(update_fields=['score'])
+            UserScore.objects.create(
+                user=user,
+                delta=score_delta,
+                reason=reason or log.get_action_display(),
+                related_log=log,
+            )
+    
+    return log
+
+
 @extend_schema(description='درخت کاربران → فروشگاه‌ها → محصولات (ادمین)')
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -1352,6 +1480,7 @@ def admin_bulk_action(request):
                 if action == 'soft_delete':
                     obj.is_active = False
                     obj.save()
+                    log_admin_action(request.user, 'soft_delete', 'user', obj.id, obj.get_full_name() or obj.phone, reason, affected_user=obj)
                 elif action == 'ban':
                     obj.is_blocked = True
                     obj.blocked_reason = reason or 'بن توسط ادمین'
@@ -1388,6 +1517,9 @@ def admin_bulk_action(request):
                         )
                     except Exception as e:
                         print('Ban notif error:', e)
+                    log_admin_action(request.user, 'ban', 'user', obj.id, obj.get_full_name() or obj.phone, reason,
+                                     extra={'banned_until': banned_until} if banned_until else {},
+                                     affected_user=obj)
                 elif action == 'warning':
                     from django.utils import timezone
                     obj.warnings_count = (obj.warnings_count or 0) + 1
@@ -1407,12 +1539,14 @@ def admin_bulk_action(request):
                         )
                     except Exception as e:
                         print('Warning notif error:', e)
+                    log_admin_action(request.user, 'warning', 'user', obj.id, obj.get_full_name() or obj.phone, reason, affected_user=obj)
                 elif action == 'restore':
                     obj.is_blocked = False
                     obj.is_active = True
                     obj.blocked_reason = ''
                     obj.banned_until = None
                     obj.save()
+                    log_admin_action(request.user, 'unban', 'user', obj.id, obj.get_full_name() or obj.phone, reason, score_delta=0, affected_user=obj)
                 else:
                     obj.save()
             
@@ -1434,6 +1568,7 @@ def admin_bulk_action(request):
                         )
                     except Exception as e:
                         print('Shop notif error:', e)
+                    log_admin_action(request.user, 'soft_delete', 'shop', obj.id, obj.name, reason, affected_user=obj.owner)
                 elif action == 'ban':
                     obj.is_active = False
                     obj.save()
@@ -1449,6 +1584,7 @@ def admin_bulk_action(request):
                         )
                     except Exception as e:
                         print('Shop notif error:', e)
+                    log_admin_action(request.user, 'ban', 'shop', obj.id, obj.name, reason, affected_user=obj.owner)
                 elif action == 'restore':
                     obj.is_active = True
                     obj.save()
@@ -1464,6 +1600,7 @@ def admin_bulk_action(request):
                         )
                     except Exception as e:
                         print('Shop notif error:', e)
+                    log_admin_action(request.user, 'unban', 'shop', obj.id, obj.name, reason, score_delta=0, affected_user=obj.owner)
                 else:
                     obj.save()
             
@@ -1488,11 +1625,14 @@ def admin_bulk_action(request):
                         )
                     except Exception as e:
                         print('Delete notif error:', e)
+                    log_admin_action(request.user, 'soft_delete', 'product', obj.id, obj.title, reason, affected_user=obj.shop.owner)
                 elif action == 'hard_delete':
                     # حذف کامل از دیتابیس
                     owner = obj.shop.owner
                     product_title = obj.title
+                    product_id = obj.id
                     obj.delete()
+                    log_admin_action(request.user, 'hard_delete', 'product', product_id, product_title, reason, affected_user=owner)
                     # نوتیف به فروشنده
                     try:
                         from apps.users.models import Notification
@@ -1525,6 +1665,7 @@ def admin_bulk_action(request):
                         )
                     except Exception as e:
                         print('Restore notif error:', e)
+                    log_admin_action(request.user, 'restore', 'product', obj.id, obj.title, reason, score_delta=0, affected_user=obj.shop.owner)
             
             results.append({'id': item_id, 'type': item_type, 'name': item.get('name'), 'status': 'ok'})
         except Exception as e:

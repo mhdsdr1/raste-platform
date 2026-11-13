@@ -554,6 +554,10 @@ class SystemSettings(models.Model):
     appeal_max_file_size_mb = models.IntegerField(default=1, verbose_name='حداکثر حجم فایل اعتراض (مگابایت)')
     admin_attachment_max_size_mb = models.IntegerField(default=1, verbose_name='حداکثر حجم فایل پاسخ ادمین (مگابایت)')
     
+    # آستانه‌های امتیاز منفی
+    warning_threshold = models.IntegerField(default=-20, verbose_name='آستانه لیست هشدار (امتیاز)')
+    blacklist_threshold = models.IntegerField(default=-25, verbose_name='آستانه بلک‌لیست (امتیاز)')
+    
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
@@ -604,3 +608,168 @@ class AppealMessage(models.Model):
     
     def __str__(self):
         return f'{self.get_sender_type_display()} - {self.product.title} - {self.created_at}'
+
+# ═══════════════════════════════════════════════════════════════
+#                        سیستم سابقه و امتیاز
+# ═══════════════════════════════════════════════════════════════
+
+class AdminLog(models.Model):
+    """سابقه عملیات ادمین/مدیر (فقط قابل مشاهده برای مدیر)"""
+    
+    TARGET_TYPE_CHOICES = [
+        ('user', 'کاربر'),
+        ('shop', 'فروشگاه'),
+        ('product', 'محصول'),
+        ('report', 'گزارش'),
+        ('system', 'سیستم'),
+    ]
+    
+    ACTION_CHOICES = [
+        ('soft_delete', 'پنهان کردن'),
+        ('hard_delete', 'حذف کامل'),
+        ('restore', 'بازگردانی'),
+        ('ban', 'بن'),
+        ('unban', 'رفع مسدودی'),
+        ('warning', 'هشدار'),
+        ('approve', 'تایید'),
+        ('reject', 'رد'),
+        ('ai_reject', 'رد توسط AI'),
+        ('report_received', 'گزارش دریافت شد'),
+        ('report_confirmed', 'گزارش تایید شد'),
+        ('report_dismissed', 'گزارش رد شد'),
+        ('score_change', 'تغییر امتیاز'),
+        ('admin_promote', 'ارتقا به ادمین'),
+        ('admin_demote', 'حذف از ادمینی'),
+    ]
+    
+    admin = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='admin_logs',
+        verbose_name='ادمین انجام‌دهنده'
+    )
+    action = models.CharField(max_length=30, choices=ACTION_CHOICES, verbose_name='عملیات')
+    
+    target_type = models.CharField(max_length=10, choices=TARGET_TYPE_CHOICES, verbose_name='نوع هدف')
+    target_id = models.IntegerField(verbose_name='شناسه هدف')
+    target_name = models.CharField(max_length=200, blank=True, default='', verbose_name='نام هدف')
+    
+    reason = models.TextField(blank=True, default='', verbose_name='دلیل/توضیح')
+    extra = models.JSONField(default=dict, blank=True, verbose_name='اطلاعات اضافی')
+    score_delta = models.IntegerField(default=0, verbose_name='تغییر امتیاز')
+    
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='تاریخ')
+    
+    class Meta:
+        verbose_name = 'سابقه ادمین'
+        verbose_name_plural = 'سوابق ادمین'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['target_type', 'target_id']),
+            models.Index(fields=['-created_at']),
+        ]
+    
+    def __str__(self):
+        return f'{self.get_action_display()} - {self.target_type}:{self.target_id} - {self.created_at}'
+
+
+class UserScore(models.Model):
+    """تاریخچه تغییرات امتیاز کاربر"""
+    
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='score_history',
+        verbose_name='کاربر'
+    )
+    delta = models.IntegerField(verbose_name='تغییر امتیاز')
+    reason = models.CharField(max_length=200, verbose_name='دلیل')
+    related_log = models.ForeignKey(
+        AdminLog,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='score_changes',
+        verbose_name='سابقه مرتبط'
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='تاریخ')
+    
+    class Meta:
+        verbose_name = 'تغییر امتیاز'
+        verbose_name_plural = 'تاریخچه امتیازات'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f'{self.user.phone}: {self.delta:+d} - {self.reason}'
+
+
+class UserReport(models.Model):
+    """گزارش تخلف (از طرف مصرف‌کننده، ناظر، AI، یا ادمین)"""
+    
+    REPORTER_TYPE_CHOICES = [
+        ('consumer', 'مصرف‌کننده'),
+        ('nazer', 'ناظر'),
+        ('ai', 'هوش مصنوعی'),
+        ('admin', 'ادمین'),
+    ]
+    
+    TARGET_TYPE_CHOICES = [
+        ('product', 'محصول'),
+        ('shop', 'فروشگاه'),
+        ('user', 'کاربر'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'در انتظار بررسی'),
+        ('confirmed', 'تایید شد'),
+        ('dismissed', 'رد شد'),
+    ]
+    
+    # گزارش‌دهنده
+    reporter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reports_submitted',
+        verbose_name='گزارش‌دهنده'
+    )
+    reporter_type = models.CharField(max_length=10, choices=REPORTER_TYPE_CHOICES, verbose_name='نوع گزارش‌دهنده')
+    
+    # هدف گزارش
+    target_type = models.CharField(max_length=10, choices=TARGET_TYPE_CHOICES, verbose_name='نوع هدف')
+    target_id = models.IntegerField(verbose_name='شناسه هدف')
+    target_name = models.CharField(max_length=200, blank=True, default='', verbose_name='نام هدف')
+    
+    # محتوا
+    reason = models.TextField(verbose_name='متن گزارش')
+    screenshot = models.ImageField(
+        upload_to='reports/screenshots/',
+        null=True, blank=True,
+        verbose_name='اسکرین‌شات'
+    )
+    
+    # بررسی
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending', verbose_name='وضعیت')
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reports_reviewed',
+        verbose_name='بررسی‌کننده'
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='تاریخ بررسی')
+    admin_note = models.TextField(blank=True, default='', verbose_name='یادداشت ادمین')
+    
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='تاریخ گزارش')
+    
+    class Meta:
+        verbose_name = 'گزارش تخلف'
+        verbose_name_plural = 'گزارش‌های تخلف'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', '-created_at']),
+            models.Index(fields=['target_type', 'target_id']),
+        ]
+    
+    def __str__(self):
+        return f'{self.get_reporter_type_display()} → {self.target_type}:{self.target_id} - {self.get_status_display()}'

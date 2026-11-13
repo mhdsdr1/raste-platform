@@ -44,6 +44,7 @@ class User(AbstractUser):
     blocked_reason = models.TextField(null=True, blank=True, verbose_name='دلیل مسدودیت')
     
     # هشدار
+    score = models.IntegerField(default=0, verbose_name='امتیاز')
     warnings_count = models.IntegerField(default=0, verbose_name='تعداد هشدارها')
     last_warning_at = models.DateTimeField(null=True, blank=True, verbose_name='تاریخ آخرین هشدار')
     last_warning_message = models.TextField(blank=True, default='', verbose_name='متن آخرین هشدار')
