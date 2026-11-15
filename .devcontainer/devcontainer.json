@@ -1,6 +1,6 @@
 {
   "name": "raste-platform",
-  "image": "mcr.microsoft.com/devcontainers/universal:latest",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
   "remoteUser": "codespace",
   "containerUser": "codespace",
   "customizations": {
