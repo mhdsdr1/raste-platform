@@ -1,6 +1,6 @@
 {
   "name": "raste-platform",
-  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "image": "mcr.microsoft.com/devcontainers/universal:latest",
   "remoteUser": "codespace",
   "containerUser": "codespace",
   "customizations": {
@@ -11,5 +11,9 @@
       ]
     }
   },
-  "postCreateCommand": "echo 'Container is ready!'"
+  "postAttachCommand": [
+    "cd /workspaces/raste-platform/backend && python manage.py runserver 0.0.0.0:8000",
+    "cd /workspaces/raste-platform/frontend && pnpm run dev -- --host 0.0.0.0",
+    "cd /workspaces/raste-platform"
+  ]
 }
