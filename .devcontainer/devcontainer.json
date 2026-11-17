@@ -1,20 +1,19 @@
 {
   "name": "raste-platform",
-  "image": "mcr.microsoft.com/devcontainers/universal:latest",
-  "remoteUser": "codespace",
-  "containerUser": "codespace",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "features": {
+    "ghcr.io/devcontainers/features/node:2": {
+      "version": "lts",
+      "pnpmVersion": "latest"
+    }
+  },
   "customizations": {
     "vscode": {
       "extensions": [
         "ms-python.python",
-        "ms-vscode.vscode-typescript-next"
-      ]
-    },
-    "codespaces": {
-      "openFiles": [
-        "README.md"
+        "ms-vscode.vscode-typescript-next",
+        "dbaeumer.vscode-eslint"
       ]
     }
-  },
-  "postAttachCommand": "cd /workspaces/raste-platform/backend && python manage.py runserver 0.0.0.0:8000 & cd /workspaces/raste-platform/frontend && pnpm run dev -- --host 0.0.0.0"
+  }
 }
