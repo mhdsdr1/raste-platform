@@ -638,6 +638,11 @@ class AdminLog(models.Model):
         ('report_confirmed', 'گزارش تایید شد'),
         ('report_dismissed', 'گزارش رد شد'),
         ('score_change', 'تغییر امتیاز'),
+        ('invite_signup', 'ثبت‌نام با کد معرف'),
+        ('invite_purchase', 'خرید پلن با کد معرف'),
+        ('report_help', 'گزارش تخلف مفید'),
+        ('custom_positive', 'تشویق مدیر'),
+        ('custom_negative', 'تنبیه مدیر'),
         ('admin_promote', 'ارتقا به ادمین'),
         ('admin_demote', 'حذف از ادمینی'),
     ]
@@ -654,6 +659,14 @@ class AdminLog(models.Model):
     target_type = models.CharField(max_length=10, choices=TARGET_TYPE_CHOICES, verbose_name='نوع هدف')
     target_id = models.IntegerField(verbose_name='شناسه هدف')
     target_name = models.CharField(max_length=200, blank=True, default='', verbose_name='نام هدف')
+    
+    affected_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='affected_logs',
+        verbose_name='کاربر متأثر'
+    )
     
     reason = models.TextField(blank=True, default='', verbose_name='دلیل/توضیح')
     extra = models.JSONField(default=dict, blank=True, verbose_name='اطلاعات اضافی')
@@ -739,6 +752,14 @@ class UserReport(models.Model):
     target_type = models.CharField(max_length=10, choices=TARGET_TYPE_CHOICES, verbose_name='نوع هدف')
     target_id = models.IntegerField(verbose_name='شناسه هدف')
     target_name = models.CharField(max_length=200, blank=True, default='', verbose_name='نام هدف')
+    
+    affected_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='affected_reports',
+        verbose_name='کاربر متأثر'
+    )
     
     # محتوا
     reason = models.TextField(verbose_name='متن گزارش')

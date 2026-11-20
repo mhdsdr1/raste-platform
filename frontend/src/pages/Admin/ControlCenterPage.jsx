@@ -20,6 +20,16 @@ export default function ControlCenterPage() {
   const [actionBanDate, setActionBanDate] = useState('');
   const [showBanCalendar, setShowBanCalendar] = useState(false);
   const [actionBanTime, setActionBanTime] = useState('23:59');
+  const [historyLogs, setHistoryLogs] = useState([]);
+  const [historyUserScore, setHistoryUserScore] = useState(null);
+  const [showPositiveModal, setShowPositiveModal] = useState(false);
+  const [positiveForm, setPositiveForm] = useState({
+    action_type: 'invite_signup',
+    count: 1,
+    custom_score: 0,
+    reason: '',
+  });
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const fetchTree = async () => {
     setLoading(true);
@@ -37,6 +47,13 @@ export default function ControlCenterPage() {
   };
 
   useEffect(() => { fetchTree(); }, [search]);
+  
+  // وقتی مودال سابقه باز شد، خودکار fetch کن
+  useEffect(() => {
+    if (showActionModal && actionType === 'history' && selectedItems.length > 0) {
+      fetchHistory();
+    }
+  }, [showActionModal, actionType, selectedItems]);
   
   // فقط وقتی search عوض شد، ریست کن
   useEffect(() => {
@@ -84,6 +101,7 @@ export default function ControlCenterPage() {
   const isSelected = (type, id) => selectedItems.some(x => x.type === type && x.id === id);
   
   const toggleSelect = (item) => {
+    console.log('toggleSelect called with:', item);
     setSelectedItems(prev => {
       const exists = prev.find(x => x.type === item.type && x.id === item.id);
       if (exists) return prev.filter(x => !(x.type === item.type && x.id === item.id));
@@ -93,6 +111,94 @@ export default function ControlCenterPage() {
   
   const clearSelection = () => setSelectedItems([]);
   
+  const fetchHistory = async () => {
+    if (selectedItems.length === 0) return;
+    setHistoryLoading(true);
+    try {
+      const allLogs = [];
+      for (const item of selectedItems) {
+        try {
+          // اگه کاربر انتخاب شده، از affected_user_id استفاده کن
+          // (که همه عملیات‌های روی محصولات/فروشگاه‌های کاربر رو هم برمی‌گردونه)
+          let url;
+          if (item.type === 'user') {
+            url = `/shops/admin/logs/?affected_user_id=${item.id}`;
+          } else {
+            url = `/shops/admin/logs/?target_type=${item.type}&target_id=${item.id}`;
+          }
+          const res = await api.get(url);
+          const logs = (res.data.logs || []).map(log => ({
+            ...log,
+            _item_name: item.name,
+            _item_type: item.type,
+          }));
+          allLogs.push(...logs);
+          // ذخیره امتیاز کاربر
+          if (res.data.user_score !== null && res.data.user_score !== undefined) {
+            setHistoryUserScore(res.data.user_score);
+          }
+        } catch (e) {
+          console.error('Error fetching history for', item, e);
+        }
+      }
+      allLogs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      setHistoryLogs(allLogs);
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'خطا در بارگذاری سابقه');
+      setHistoryLogs([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // افکت درخشش طلایی از وسط
+  const goldShineStyle = `
+    @keyframes starGlow {
+      0%   { opacity: 0.6; filter: drop-shadow(0 0 1px #fff); }
+      50%  { opacity: 1; filter: drop-shadow(0 0 4px #fff) drop-shadow(0 0 6px #fef08a); }
+      100% { opacity: 0.6; filter: drop-shadow(0 0 1px #fff); }
+    }
+    .star-spin {
+      display: inline-block;
+      animation: starGlow 2s ease-in-out infinite;
+    }
+    @keyframes goldShine {
+      0%   { opacity: 0; transform: scale(0.3); }
+      20%  { opacity: 1; transform: scale(1.5); }
+      35%  { opacity: 0.8; transform: scale(1.2); }
+      50%  { opacity: 1; transform: scale(1.4); }
+      70%  { opacity: 0; transform: scale(0.6); }
+      100% { opacity: 0; transform: scale(0.3); }
+    }
+    .shine-gold {
+      position: relative;
+      overflow: hidden;
+    }
+    .shine-gold::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: radial-gradient(
+        circle at center,
+        rgba(255,255,255,0.9) 0%,
+        rgba(255,255,255,0.4) 20%,
+        rgba(255,255,255,0) 50%
+      );
+      animation: goldShine 3s ease-in-out infinite;
+      animation-delay: 1s;
+      pointer-events: none;
+    }
+  `;
+
+  const getScoreColor = (score) => {
+    if (score === null || score === undefined) return 'bg-blue-500';
+    if (score >= 0) return 'bg-green-500 shine-gold';  // سبز با درخشش برای مثبت
+    if (score >= 0) return 'bg-green-500';
+    if (score > -10) return 'bg-yellow-500';
+    if (score > -20) return 'bg-orange-500';
+    return 'bg-red-600';
+  };
+
   const isBanDateValid = () => {
     if (actionType !== 'ban') return true;
     if (!actionBanDate) return true; // بدون تاریخ = بن دائمی
@@ -125,6 +231,7 @@ export default function ControlCenterPage() {
 
   return (
     <div className="min-h-screen bg-[#fdf2f8] pb-8">
+      <style>{goldShineStyle}</style>
       <header className="bg-white border-b sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-3 py-3 flex items-center gap-2">
           <Link to="/dashboard" className="text-xs text-gray-500 hover:text-pink-600">← داشبورد</Link>
@@ -182,6 +289,10 @@ export default function ControlCenterPage() {
                 <button onClick={() => { setActionType('ban'); setShowActionModal(true); }}
                   className="text-[10px] bg-white/20 hover:bg-white/30 px-2 py-1 rounded font-bold">
                   ⛔ بن تا تاریخ
+                </button>
+                <button onClick={() => { setShowPositiveModal(true); }}
+                  className="text-[10px] bg-amber-500/40 hover:bg-amber-500/60 px-2 py-1 rounded font-bold">
+                  ➕ امتیاز جبرانی
                 </button>
                 <button onClick={() => { setActionType('restore'); setShowActionModal(true); }}
                   className="text-[10px] bg-white/20 hover:bg-white/30 px-2 py-1 rounded font-bold">
@@ -322,15 +433,164 @@ export default function ControlCenterPage() {
       </main>
 
       {/* مودال عملیات */}
+      {/* مودال امتیاز جبرانی */}
+      {showPositiveModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3" onClick={() => setShowPositiveModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 rounded-t-2xl bg-gradient-to-l from-amber-500 to-amber-600">
+              <h3 className="font-bold text-white text-sm">
+                ➕ امتیاز جبرانی
+              </h3>
+              <button onClick={() => setShowPositiveModal(false)} className="text-white text-lg">✕</button>
+            </div>
+
+            <div className="p-3 space-y-3 overflow-y-auto flex-1">
+              {/* نام کاربر */}
+              <div className="bg-amber-50 rounded-lg p-2 text-[11px] text-gray-700">
+                👤 {selectedItems[0]?.name}
+              </div>
+
+              {/* گزینه‌ها */}
+              <div>
+                <label className="text-[10px] text-gray-500 mb-1 block">نوع امتیاز</label>
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="positive_action"
+                      checked={positiveForm.action_type === 'invite_signup'}
+                      onChange={() => setPositiveForm({...positiveForm, action_type: 'invite_signup', count: 1})}
+                    />
+                    <span className="text-xs font-bold text-gray-700">🎁 ثبت‌نام با کد معرف</span>
+                    <span className="text-[10px] text-green-600 mr-auto">+1 هر نفر</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="positive_action"
+                      checked={positiveForm.action_type === 'invite_purchase'}
+                      onChange={() => setPositiveForm({...positiveForm, action_type: 'invite_purchase', count: 1})}
+                    />
+                    <span className="text-xs font-bold text-gray-700">💳 خرید پلن با کد معرف</span>
+                    <span className="text-[10px] text-green-600 mr-auto">+5 هر نفر</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="positive_action"
+                      checked={positiveForm.action_type === 'report_help'}
+                      onChange={() => setPositiveForm({...positiveForm, action_type: 'report_help', count: 1})}
+                    />
+                    <span className="text-xs font-bold text-gray-700">🚨 گزارش تخلف مفید</span>
+                    <span className="text-[10px] text-green-600 mr-auto">+1 هر مورد</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="positive_action"
+                      checked={positiveForm.action_type === 'custom_positive' || positiveForm.action_type === 'custom_negative'}
+                      onChange={() => setPositiveForm({...positiveForm, action_type: 'custom_positive', custom_score: 5})}
+                    />
+                    <span className="text-xs font-bold text-gray-700">✏️ تشویق/تنبیه مدیر</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* تعداد (برای سه گزینه اول) */}
+              {(positiveForm.action_type === 'invite_signup' || positiveForm.action_type === 'invite_purchase' || positiveForm.action_type === 'report_help') && (
+                <div>
+                  <label className="text-[10px] text-gray-500 mb-1 block">تعداد</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={positiveForm.count}
+                    onChange={e => setPositiveForm({...positiveForm, count: parseInt(e.target.value) || 1})}
+                    className="w-full px-2 py-1.5 border rounded-lg text-xs"
+                  />
+                  <p className="text-[10px] text-amber-600 mt-1 font-bold">
+                    امتیاز: {positiveForm.action_type === 'invite_purchase' ? positiveForm.count * 5 : positiveForm.count} +
+                  </p>
+                </div>
+              )}
+
+              {/* امتیاز دلخواه (برای custom) */}
+              {(positiveForm.action_type === 'custom_positive' || positiveForm.action_type === 'custom_negative') && (
+                <div>
+                  <label className="text-[10px] text-gray-500 mb-1 block">مقدار امتیاز (مثبت یا منفی)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={positiveForm.custom_score}
+                      onChange={e => {
+                        const val = parseInt(e.target.value) || 0;
+                        setPositiveForm({
+                          ...positiveForm,
+                          custom_score: val,
+                          action_type: val >= 0 ? 'custom_positive' : 'custom_negative',
+                        });
+                      }}
+                      className="flex-1 px-2 py-1.5 border rounded-lg text-xs"
+                      placeholder="مثلاً 10 یا -5"
+                    />
+                  </div>
+                  <p className={`text-[10px] mt-1 font-bold ${positiveForm.custom_score >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {positiveForm.custom_score >= 0 ? '🎉 تشویق' : '⚠️ تنبیه'}: {positiveForm.custom_score >= 0 ? '+' : ''}{positiveForm.custom_score}
+                  </p>
+                </div>
+              )}
+
+              {/* دلیل */}
+              <div>
+                <label className="text-[10px] text-gray-500 mb-1 block">توضیح (اختیاری)</label>
+                <textarea
+                  value={positiveForm.reason}
+                  onChange={e => setPositiveForm({...positiveForm, reason: e.target.value})}
+                  rows={2}
+                  className="w-full px-2 py-1.5 border rounded-lg text-xs resize-none"
+                  placeholder="مثلاً: ۳ نفر با کد این کاربر ثبت‌نام کردن"
+                />
+              </div>
+            </div>
+
+            <div className="p-3 border-t bg-gray-50 flex gap-2 rounded-b-2xl">
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await api.post('/shops/admin/positive-score/', {
+                      user_id: selectedItems[0]?.id,
+                      action_type: positiveForm.action_type,
+                      count: positiveForm.count,
+                      custom_score: positiveForm.custom_score,
+                      reason: positiveForm.reason,
+                    });
+                    toast.success(res.data.message + ` (امتیاز جدید: ${res.data.new_score})`);
+                    setShowPositiveModal(false);
+                    setPositiveForm({ action_type: 'invite_signup', count: 1, custom_score: 0, reason: '' });
+                    setSelectedItems([]);
+                    fetchTree();
+                  } catch (e) {
+                    toast.error(e?.response?.data?.error || 'خطا');
+                  }
+                }}
+                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-lg text-xs font-bold"
+              >
+                ✓ اعمال
+              </button>
+              <button onClick={() => setShowPositiveModal(false)} className="bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-xs font-bold">انصراف</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showActionModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3" onClick={() => setShowActionModal(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <div className={`flex items-center justify-between p-3 rounded-t-2xl ${
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className={`flex items-center justify-between px-4 py-4 rounded-t-2xl ${
               actionType === 'soft_delete' ? 'bg-orange-500' :
               actionType === 'hard_delete' ? 'bg-red-600' :
               actionType === 'ban' ? 'bg-red-700' :
               actionType === 'warning' ? 'bg-yellow-500' :
-              actionType === 'history' ? 'bg-blue-500' :
+              actionType === 'history' ? getScoreColor(historyUserScore) :
               'bg-green-500'
             }`}>
               <h3 className="font-bold text-white text-sm">
@@ -339,24 +599,78 @@ export default function ControlCenterPage() {
                 {actionType === 'ban' && '⛔ بن کردن'}
                 {actionType === 'warning' && '⚠️ ارسال هشدار'}
                 {actionType === 'restore' && '♻️ بازگردانی'}
-                {actionType === 'history' && '📋 سابقه'}
-                {' '}({selectedItems.length} مورد)
+                {actionType === 'history' && '📊 امتیازات'}
+                {actionType !== 'history' && ` (${selectedItems.length} مورد)`}
               </h3>
-              <button onClick={() => setShowActionModal(false)} className="text-white text-lg">✕</button>
+              <div className="flex items-center gap-2">
+                {actionType === 'history' && historyUserScore !== null && (
+                  <span className="text-base font-extrabold text-white flex items-center gap-1" dir="ltr">
+                    {historyUserScore >= 20 && <span className="text-lg star-spin">✨</span>}
+                    {historyUserScore < 0 ? '-' : ''}{Math.abs(historyUserScore)}
+                  </span>
+                )}
+                <button onClick={() => setShowActionModal(false)} className="text-white text-lg">✕</button>
+              </div>
             </div>
 
-            <div className="p-3 space-y-3">
-              {/* لیست آیتم‌ها */}
-              <div className="bg-gray-50 rounded-lg p-2 max-h-32 overflow-y-auto">
-                {selectedItems.map((item, i) => (
-                  <p key={i} className="text-[10px] text-gray-600">
-                    {item.type === 'user' && '👤'}
-                    {item.type === 'shop' && '🏪'}
-                    {item.type === 'product' && '📦'}
-                    {' '}{item.name}
-                  </p>
-                ))}
-              </div>
+            <div className="p-3 space-y-3 overflow-y-auto flex-1">
+              {/* لیست آیتم‌ها (غیر از history) */}
+              {actionType !== 'history' && (
+                <div className="bg-gray-50 rounded-lg p-2 max-h-32 overflow-y-auto">
+                  {selectedItems.map((item, i) => (
+                    <p key={i} className="text-[10px] text-gray-600">
+                      {item.type === 'user' && '👤'}
+                      {item.type === 'shop' && '🏪'}
+                      {item.type === 'product' && '📦'}
+                      {' '}{item.name}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {/* نمایش لیست سابقه‌ها (برای history) */}
+              {actionType === 'history' && (
+                <div>
+                  {historyLoading ? (
+                    <div className="text-center py-8 text-gray-400 text-xs">در حال بارگذاری...</div>
+                  ) : historyLogs.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400 text-xs">سابقه‌ای یافت نشد</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {historyLogs.map((log) => (
+                        <div key={log.id} className="border rounded-lg p-2 bg-gray-50">
+                          <div className="flex items-start justify-between mb-1">
+                            <span className="text-[11px] font-bold text-gray-800">
+                              {log.action_display}
+                              {log.score_delta !== 0 && (
+                                <span className={`mr-1 text-[9px] px-1 py-0.5 rounded ${
+                                  log.score_delta < 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
+                                }`}>
+                                  {log.score_delta > 0 ? '+' : ''}{log.score_delta}
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[9px] text-gray-400">
+                              {new Date(log.created_at).toLocaleString('fa-IR', { calendar: 'persian' })}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-gray-600 mb-1">
+                            {log.target_type_display}: {log.target_name}
+                          </p>
+                          {log.reason && (
+                            <p className="text-[10px] text-gray-500 bg-white rounded p-1 mt-1">
+                              💬 {log.reason}
+                            </p>
+                          )}
+                          <p className="text-[9px] text-gray-400 mt-1">
+                            👤 {log.admin_name || log.admin_phone}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* دلیل */}
               {(actionType === 'soft_delete' || actionType === 'hard_delete' || actionType === 'ban' || actionType === 'warning') && (
@@ -506,6 +820,7 @@ export default function ControlCenterPage() {
             </div>
 
             <div className="p-3 border-t bg-gray-50 flex gap-2 rounded-b-2xl">
+              {actionType !== 'history' && (
               <button
                 onClick={async () => {
                   try {
@@ -534,7 +849,10 @@ export default function ControlCenterPage() {
               >
                 ✓ اعمال
               </button>
-              <button onClick={() => setShowActionModal(false)} className="bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-xs font-bold">انصراف</button>
+              )}
+              <button onClick={() => { setShowActionModal(false); setHistoryLogs([]); setHistoryUserScore(null); }} className={`${actionType === 'history' ? 'flex-1' : ''} bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-xs font-bold`}>
+                {actionType === 'history' ? 'بستن' : 'انصراف'}
+              </button>
             </div>
           </div>
         </div>

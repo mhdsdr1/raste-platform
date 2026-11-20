@@ -1152,6 +1152,24 @@ def review_appeal(request, product_id):
     
     product.save()
     
+    # ثبت سابقه ادمین
+    try:
+        if action == 'accept':
+            log_admin_action(request.user, 'approve', 'product', product.id, product.title,
+                             reason=admin_response or admin_notes or 'تایید اعتراض',
+                             affected_user=product.shop.owner)
+        elif action == 'reject':
+            log_admin_action(request.user, 'reject', 'product', product.id, product.title,
+                             reason=admin_response or admin_notes or 'رد اعتراض',
+                             affected_user=product.shop.owner)
+        # respond → فقط سابقه، بدون امتیاز
+        elif action == 'respond':
+            log_admin_action(request.user, 'score_change', 'product', product.id, product.title,
+                             reason='پاسخ به اعتراض: ' + (admin_response or msg),
+                             score_delta=0)
+    except Exception as e:
+        print('Review log error:', e)
+    
     # ثبت پاسخ ادمین در تاریخچه
     from .models import AppealMessage
     admin_msg = admin_response if admin_response else msg
@@ -1285,13 +1303,16 @@ def appeal_messages(request, product_id):
 
 # جدول امتیاز منفی هر عملیات (قابل تغییر در آینده)
 SCORE_PENALTIES = {
-    'soft_delete': 0,       # پنهان کردن → امتیاز منفی نداره
-    'hard_delete': 0,       # حذف کامل → امتیاز منفی نداره
-    'ban': -5,              # بن → -5 (پیش‌فرض؛ برای بن ۷ روزه بیشتر)
+    'soft_delete': -1,      # پنهان کردن → -1
+    'hard_delete': -3,      # حذف کامل → -3
+    'ban': -5,              # بن → -5
     'warning': -3,          # هشدار → -3
     'ai_reject': -1,        # رد توسط AI → -1
     'report_confirmed': -5, # گزارش تاییدشده → -5
 }
+
+# امتیاز منفی برای پنهان کردن فروشگاه (بیشتر از محصول)
+SHOP_SOFT_DELETE_SCORE = -5
 
 
 def log_admin_action(admin, action, target_type, target_id, target_name='', reason='', extra=None, score_delta=0, affected_user=None):
@@ -1321,41 +1342,47 @@ def log_admin_action(admin, action, target_type, target_id, target_name='', reas
         reason=reason or '',
         extra=extra or {},
         score_delta=score_delta,
+        affected_user=affected_user,
     )
     
-    # اعمال امتیاز منفی
-    if score_delta != 0:
-        # تعیین کاربر هدف
-        user = affected_user
-        if user is None and target_type == 'user':
+    # تعیین کاربر هدف (حتی اگه score_delta=0 باشه، برای affected_user)
+    user = affected_user
+    if user is None:
+        if target_type == 'user':
             try:
                 user = User.objects.get(id=target_id)
             except User.DoesNotExist:
                 pass
-        elif user is None and target_type == 'shop':
+        elif target_type == 'shop':
             try:
                 from .models import Shop
                 shop = Shop.objects.get(id=target_id)
                 user = shop.owner
             except Exception:
                 pass
-        elif user is None and target_type == 'product':
+        elif target_type == 'product':
             try:
                 from .models import Product
                 product = Product.objects.get(id=target_id)
                 user = product.shop.owner
             except Exception:
                 pass
-        
-        if user:
-            user.score = (user.score or 0) + score_delta
-            user.save(update_fields=['score'])
-            UserScore.objects.create(
-                user=user,
-                delta=score_delta,
-                reason=reason or log.get_action_display(),
-                related_log=log,
-            )
+    
+    # اگه کاربر پیدا شد ولی affected_user خالی بود، ست کن
+    if user and not log.affected_user:
+        log.affected_user = user
+        log.save(update_fields=['affected_user'])
+    
+    # اعمال امتیاز منفی
+    if user and score_delta != 0:
+        user.score = (user.score or 0) + score_delta
+        user.save(update_fields=['score'])
+        UserScore.objects.create(
+            user=user,
+            delta=score_delta,
+            reason=reason or log.get_action_display(),
+            related_log=log,
+        )
     
     return log
 
@@ -1568,7 +1595,7 @@ def admin_bulk_action(request):
                         )
                     except Exception as e:
                         print('Shop notif error:', e)
-                    log_admin_action(request.user, 'soft_delete', 'shop', obj.id, obj.name, reason, affected_user=obj.owner)
+                    log_admin_action(request.user, 'soft_delete', 'shop', obj.id, obj.name, reason, score_delta=SHOP_SOFT_DELETE_SCORE, affected_user=obj.owner)
                 elif action == 'ban':
                     obj.is_active = False
                     obj.save()
@@ -1676,4 +1703,140 @@ def admin_bulk_action(request):
         'results': results,
         'success_count': sum(1 for r in results if r['status'] == 'ok'),
         'error_count': sum(1 for r in results if r['status'] != 'ok'),
+    })
+
+@extend_schema(description='سابقه عملیات ادمین‌ها (فقط مدیر)')
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_logs(request):
+    """لیست سوابق عملیات - فقط برای مدیر (نه ادمین)"""
+    if not request.user.is_owner:
+        return Response({'error': 'فقط مدیر دسترسی دارد'}, status=status.HTTP_403_FORBIDDEN)
+    
+    from .models import AdminLog
+    
+    target_type = request.query_params.get('target_type')
+    target_id = request.query_params.get('target_id')
+    affected_user_id = request.query_params.get('affected_user_id')
+    
+    logs = AdminLog.objects.all()
+    
+    if affected_user_id:
+        # همه عملیات‌های مربوط به این کاربر (چه مستقیم، چه روی محصولات/فروشگاه‌هاش)
+        logs = logs.filter(affected_user_id=affected_user_id)
+    else:
+        # فیلتر قدیمی (سازگاری)
+        if target_type:
+            logs = logs.filter(target_type=target_type)
+        if target_id:
+            logs = logs.filter(target_id=target_id)
+    
+    logs = logs.order_by('-created_at')[:100]
+    
+    result = []
+    for log in logs:
+        result.append({
+            'id': log.id,
+            'action': log.action,
+            'action_display': log.get_action_display(),
+            'target_type': log.target_type,
+            'target_type_display': log.get_target_type_display(),
+            'target_id': log.target_id,
+            'target_name': log.target_name,
+            'reason': log.reason,
+            'extra': log.extra,
+            'score_delta': log.score_delta,
+            'admin_phone': log.admin.phone if log.admin else 'سیستم',
+            'admin_name': (log.admin.get_full_name() if log.admin else 'هوش مصنوعی') or '',
+            'created_at': log.created_at.isoformat(),
+        })
+    
+    # اگه affected_user_id داده شده، امتیاز کاربر رو هم برگردون
+    user_score = None
+    if affected_user_id:
+        from apps.users.models import User as UserModel
+        try:
+            u = UserModel.objects.get(id=affected_user_id)
+            user_score = u.score
+        except UserModel.DoesNotExist:
+            pass
+    
+    return Response({'logs': result, 'count': len(result), 'user_score': user_score})
+
+@extend_schema(description='اعطای امتیاز جبرانی (فقط مدیر)')
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_positive_score(request):
+    """اعطای امتیاز مثبت/منفی دستی - فقط مدیر"""
+    if not request.user.is_owner:
+        return Response({'error': 'فقط مدیر دسترسی دارد'}, status=status.HTTP_403_FORBIDDEN)
+    
+    from apps.users.models import User
+    
+    user_id = request.data.get('user_id')
+    action_type = request.data.get('action_type')
+    count = int(request.data.get('count', 1))
+    custom_score = request.data.get('custom_score', 0)
+    reason = request.data.get('reason', '')
+    
+    try:
+        target_user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({'error': 'کاربر یافت نشد'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # تعیین امتیاز
+    if action_type == 'invite_signup':
+        score = 1 * count
+        label = f'ثبت‌نام با کد معرف ({count} نفر)'
+    elif action_type == 'invite_purchase':
+        score = 5 * count
+        label = f'خرید پلن با کد معرف ({count} نفر)'
+    elif action_type == 'report_help':
+        score = 1 * count
+        label = f'گزارش تخلف مفید ({count} مورد)'
+    elif action_type == 'custom_positive':
+        score = abs(int(custom_score))
+        label = f'تشویق مدیر'
+    elif action_type == 'custom_negative':
+        score = -abs(int(custom_score))
+        label = f'تنبیه مدیر'
+    else:
+        return Response({'error': 'action_type نامعتبر'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if score == 0:
+        return Response({'error': 'امتیاز نمی‌تواند صفر باشد'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # ثبت سابقه + اعمال امتیاز
+    log = log_admin_action(
+        request.user,
+        action_type,
+        'user',
+        target_user.id,
+        target_user.get_full_name() or target_user.phone,
+        reason=f'{label}' + (f' - {reason}' if reason else ''),
+        score_delta=score,
+        affected_user=target_user,
+    )
+    
+    # نوتیف به کاربر
+    try:
+        from apps.users.models import Notification
+        icon = '🎉' if score > 0 else '⚠️'
+        title = '🎉 امتیاز مثبت دریافت کردید' if score > 0 else '⚠️ امتیاز منفی دریافت کردید'
+        Notification.create_notif(
+            user=target_user,
+            title=title,
+            message=f'{label}: {score:+d} امتیاز' + (f' - {reason}' if reason else ''),
+            notif_type='order' if score > 0 else 'alert',
+            link='/dashboard',
+            icon=icon,
+        )
+    except Exception as e:
+        print('Notif error:', e)
+    
+    return Response({
+        'success': True,
+        'new_score': target_user.score,
+        'delta': score,
+        'message': f'{label}: {score:+d} امتیاز',
     })
