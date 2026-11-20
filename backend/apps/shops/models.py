@@ -557,6 +557,7 @@ class SystemSettings(models.Model):
     # آستانه‌های امتیاز منفی
     warning_threshold = models.IntegerField(default=-20, verbose_name='آستانه لیست هشدار (امتیاز)')
     blacklist_threshold = models.IntegerField(default=-25, verbose_name='آستانه بلک‌لیست (امتیاز)')
+    auto_ban_threshold = models.IntegerField(default=-20, verbose_name='آستانه بن خودکار (امتیاز)')
     
     updated_at = models.DateTimeField(auto_now=True)
     

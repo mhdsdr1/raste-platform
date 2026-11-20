@@ -1315,6 +1315,59 @@ SCORE_PENALTIES = {
 SHOP_SOFT_DELETE_SCORE = -5
 
 
+def check_auto_ban(user):
+    """بررسی و اعمال بن خودکار بر اساس امتیاز"""
+    from .models import SystemSettings
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    settings = SystemSettings.get_settings()
+    
+    # اگه کاربر از قبل بن هست، کاری نکن
+    if user.is_currently_banned:
+        return False
+    
+    # اگه امتیاز به آستانه نرسیده، کاری نکن
+    if user.score > settings.auto_ban_threshold:
+        return False
+    
+    # بن خودکار
+    user.banned_until = timezone.now() + timedelta(days=30)
+    user.ban_reason = f'بن خودکار به دلیل امتیاز منفی ({user.score})'
+    user.save(update_fields=['banned_until', 'ban_reason'])
+    
+    # نوتیف به کاربر
+    try:
+        from apps.users.models import Notification
+        Notification.create_notif(
+            user=user,
+            title='⛔ حساب شما به طور خودکار مسدود شد',
+            message=f'امتیاز شما به {user.score} رسید. حساب شما به مدت ۳۰ روز مسدود شد.',
+            notif_type='alert',
+            link='/dashboard',
+            icon='⛔',
+        )
+    except Exception as e:
+        print('Auto-ban user notif error:', e)
+    
+    # نوتیف به ادمین‌ها
+    try:
+        from apps.users.models import User, Notification
+        for admin in User.objects.filter(is_staff=True):
+            Notification.create_notif(
+                user=admin,
+                title='⚠️ بن خودکار کاربر',
+                message=f'کاربر {user.phone} به دلیل امتیاز منفی ({user.score}) به مدت ۳۰ روز بن شد.',
+                notif_type='alert',
+                link='/admin/control',
+                icon='⚠️',
+            )
+    except Exception as e:
+        print('Auto-ban admin notif error:', e)
+    
+    return True
+
+
 def log_admin_action(admin, action, target_type, target_id, target_name='', reason='', extra=None, score_delta=0, affected_user=None):
     """
     ثبت سابقه عملیات + اعمال امتیاز منفی (در صورت نیاز)
@@ -1383,6 +1436,8 @@ def log_admin_action(admin, action, target_type, target_id, target_name='', reas
             reason=reason or log.get_action_display(),
             related_log=log,
         )
+        # بررسی بن خودکار
+        check_auto_ban(user)
     
     return log
 

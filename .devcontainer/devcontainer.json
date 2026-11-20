@@ -7,7 +7,10 @@
       "pnpmVersion": "latest"
     }
   },
-  "forwardPorts": [3000, 8000],
+  "forwardPorts": [
+    3000,
+    8000
+  ],
   "portsAttributes": {
     "3000": {
       "label": "Frontend (Vite)",
@@ -28,5 +31,6 @@
         "dbaeumer.vscode-eslint"
       ]
     }
-  }
+  },
+  "postCreateCommand": "sudo apt update && sudo apt install -y git-lfs && git lfs install"
 }
