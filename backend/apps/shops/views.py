@@ -1461,6 +1461,10 @@ def admin_tree(request):
         Q(shops__isnull=False) | Q(role__in=['admin', 'owner'])
     ).distinct()
     
+    # اگه کاربر فعلی ادمین است (نه مدیر)، مدیر رو حذف کن
+    if not request.user.is_owner:
+        users_qs = users_qs.exclude(role='owner')
+    
     if search:
         users_qs = users_qs.filter(
             Q(phone__icontains=search) |
@@ -1554,7 +1558,7 @@ def admin_bulk_action(request):
             
             if item_type == 'user':
                 obj = User.objects.get(id=item_id)
-                # فقط مدیر می‌تونه ادمین‌ها رو تغییر بده
+                # فقط مدیر می‌تونه ادمین‌ها و مدیر رو تغییر بده
                 if obj.role in ['admin', 'owner'] and not request.user.is_owner:
                     results.append({'id': item_id, 'status': 'forbidden', 'name': item.get('name')})
                     continue
@@ -1634,6 +1638,10 @@ def admin_bulk_action(request):
             
             elif item_type == 'shop':
                 obj = Shop.objects.get(id=item_id)
+                # ادمین نمی‌تونه روی فروشگاه مدیر عملیات بزنه
+                if obj.owner.role == 'owner' and not request.user.is_owner:
+                    results.append({'id': item_id, 'status': 'forbidden', 'name': item.get('name')})
+                    continue
                 if action == 'soft_delete':
                     obj.is_active = False
                     obj.save()
@@ -1688,6 +1696,10 @@ def admin_bulk_action(request):
             
             elif item_type == 'product':
                 obj = Product.objects.get(id=item_id)
+                # ادمین نمی‌تونه روی محصولات مدیر عملیات بزنه
+                if obj.shop.owner.role == 'owner' and not request.user.is_owner:
+                    results.append({'id': item_id, 'status': 'forbidden', 'name': item.get('name')})
+                    continue
                 if action == 'soft_delete':
                     obj.is_deleted = True
                     obj.is_visible = False
@@ -1775,6 +1787,12 @@ def admin_logs(request):
     affected_user_id = request.query_params.get('affected_user_id')
     
     logs = AdminLog.objects.all()
+    
+    # اگه کاربر فعلی ادمین است (نه مدیر)، سوابق مدیر رو حذف کن
+    if not request.user.is_owner:
+        # سوابق مربوط به کاربرانی که role='owner' هستن رو حذف کن
+        owner_ids = User.objects.filter(role='owner').values_list('id', flat=True)
+        logs = logs.exclude(affected_user_id__in=owner_ids).exclude(admin_id__in=owner_ids)
     
     if affected_user_id:
         # همه عملیات‌های مربوط به این کاربر (چه مستقیم، چه روی محصولات/فروشگاه‌هاش)
